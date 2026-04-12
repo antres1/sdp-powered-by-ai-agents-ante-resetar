@@ -1,0 +1,35 @@
+@startuml seq-end-turn
+title Scenario 3: End Turn
+
+participant "Web Client\n(active player)" as client
+participant "API Gateway" as apigw
+participant "EndTurnFunction" as lambda
+participant "Game Rules" as rules
+participant "DynamoDB" as dynamo
+
+client -> apigw : {"action":"endTurn"}
+apigw -> lambda : endTurn event
+
+lambda -> dynamo : get GAME#<gameId> / STATE
+dynamo --> lambda : GameState
+
+lambda -> rules : end_turn(state)
+note right of rules
+  1. Increment opponent mana slots (max 10)
+  2. Refill opponent mana to slots
+  3. Draw card for opponent
+     - empty deck → Bleeding Out (-1 HP)
+     - full hand (5) → Overload (discard)
+  4. Switch active player
+end note
+rules --> lambda : new GameState
+
+lambda -> dynamo : put GAME#<gameId> / STATE (new GameState)
+lambda -> apigw : postToConnection(player1) → {"gameState": ...}
+lambda -> apigw : postToConnection(player2) → {"gameState": ...}
+
+alt opponent health <= 0 (Bleeding Out caused death)
+  lambda -> apigw : postToConnection(player1) → {"status":"game_over", "winner":...}
+  lambda -> apigw : postToConnection(player2) → {"status":"game_over", "winner":...}
+end
+@enduml

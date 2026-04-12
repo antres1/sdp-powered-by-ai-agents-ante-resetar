@@ -1,0 +1,32 @@
+@startuml seq-play-card
+title Scenario 2: Play Card
+
+participant "Web Client\n(active player)" as client
+participant "API Gateway" as apigw
+participant "PlayCardFunction" as lambda
+participant "Game Rules" as rules
+participant "DynamoDB" as dynamo
+
+client -> apigw : {"action":"playCard", "cardIndex":2}
+apigw -> lambda : playCard event
+
+lambda -> dynamo : get GAME#<gameId> / STATE
+dynamo --> lambda : GameState
+
+lambda -> rules : play_card(state, cardIndex)
+
+alt insufficient mana
+  rules --> lambda : RuleViolation("not enough mana")
+  lambda -> apigw : postToConnection(player) → {"error":"not enough mana"}
+else valid play
+  rules --> lambda : new GameState (mana reduced, opponent health reduced)
+  lambda -> dynamo : put GAME#<gameId> / STATE (new GameState)
+  lambda -> apigw : postToConnection(player1) → {"gameState": ...}
+  lambda -> apigw : postToConnection(player2) → {"gameState": ...}
+
+  alt opponent health <= 0
+    lambda -> apigw : postToConnection(player1) → {"status":"game_over", "winner":...}
+    lambda -> apigw : postToConnection(player2) → {"status":"game_over", "winner":...}
+  end
+end
+@enduml

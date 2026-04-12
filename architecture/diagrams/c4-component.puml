@@ -1,0 +1,22 @@
+@startuml c4-component
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram — Game Engine Lambdas (PlayCard / EndTurn)
+
+Container_Boundary(lambda, "PlayCardFunction / EndTurnFunction") {
+  Component(handler, "Lambda Handler", "Python", "Parses WebSocket event, calls domain use case, returns response")
+  Component(use_case, "Game Use Case", "Python", "Orchestrates domain objects: load state, apply action, persist, notify")
+  Component(game, "GameState", "Python (dataclass)", "Immutable value object: health, mana, hand, deck, active player")
+  Component(rules, "Game Rules", "Python (pure functions)", "Enforces mana cost, Bleeding Out, Overload, win condition")
+  Component(repo, "GameRepository", "Python / boto3", "DynamoDB adapter: get_game(), save_game()")
+  Component(notifier, "PlayerNotifier", "Python / boto3", "API Gateway Management API adapter: post_to_connection()")
+}
+
+Rel(handler, use_case, "Calls")
+Rel(use_case, game, "Reads / produces")
+Rel(use_case, rules, "Delegates rule checks")
+Rel(use_case, repo, "Load / persist GameState")
+Rel(use_case, notifier, "Push updated state")
+
+SHOW_LEGEND()
+@enduml

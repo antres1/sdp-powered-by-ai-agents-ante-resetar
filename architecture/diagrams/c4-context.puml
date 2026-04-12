@@ -1,0 +1,18 @@
+@startuml c4-context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title System Context Diagram — Trading Card Game
+
+Person(player, "Player", "Plays the trading card game via a web browser in real time against another player.")
+
+System(tcg, "Trading Card Game System", "Manages game sessions, enforces card game rules (mana, deck, damage, turn order), and streams game state updates to players in real time.")
+
+System_Ext(cognito, "AWS Cognito", "Authenticates players and issues JWT tokens for API access.")
+System_Ext(dynamo, "Amazon DynamoDB", "Persists game state, player sessions, and WebSocket connection IDs.")
+
+Rel(player, tcg, "Creates/joins games, plays cards, ends turns", "WebSocket (wss://)")
+Rel(tcg, cognito, "Validates player identity on connect", "HTTPS")
+Rel(tcg, dynamo, "Reads/writes game state and connection IDs", "HTTPS (AWS SDK)")
+
+SHOW_LEGEND()
+@enduml

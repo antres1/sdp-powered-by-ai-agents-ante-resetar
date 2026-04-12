@@ -1,0 +1,31 @@
+@startuml seq-matchmaking
+title Scenario 1: Player Connect & Matchmaking
+
+participant "Web Client" as client
+participant "API Gateway\n(WebSocket)" as apigw
+participant "ConnectFunction" as connect
+participant "MatchmakingFunction" as matchmaking
+participant "Cognito" as cognito
+participant "DynamoDB" as dynamo
+
+client -> apigw : wss:// connect (JWT in query string)
+apigw -> connect : $connect event
+connect -> cognito : validate JWT
+cognito --> connect : claims (playerId)
+connect -> dynamo : put CONN#<connectionId> → playerId
+connect --> apigw : HTTP 200
+
+client -> apigw : {"action":"joinQueue"}
+apigw -> matchmaking : joinQueue event
+matchmaking -> dynamo : put QUEUE / PLAYER#<playerId>
+matchmaking -> dynamo : scan QUEUE (looking for opponent)
+
+alt no opponent waiting
+  matchmaking --> client : {"status":"waiting"}
+else opponent found
+  matchmaking -> dynamo : delete both QUEUE entries
+  matchmaking -> dynamo : put GAME#<gameId> / STATE (initial GameState)
+  matchmaking -> apigw : postToConnection(player1) → {"status":"matched", gameState}
+  matchmaking -> apigw : postToConnection(player2) → {"status":"matched", gameState}
+end
+@enduml
