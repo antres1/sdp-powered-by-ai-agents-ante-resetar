@@ -1,6 +1,6 @@
 # 7. Deployment View
 
-See [`diagrams/deployment.puml`](diagrams/deployment.puml).
+See [`diagrams/deployment.svg`](diagrams/deployment.svg).
 
 ## 7.1 Infrastructure Overview
 

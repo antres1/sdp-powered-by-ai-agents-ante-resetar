@@ -2,7 +2,7 @@
 
 ## Scenario 1: Player Connect & Matchmaking
 
-See [`diagrams/seq-matchmaking.puml`](diagrams/seq-matchmaking.puml).
+See [`diagrams/seq-matchmaking.svg`](diagrams/seq-matchmaking.svg).
 
 1. Player opens WebSocket connection with JWT in the query string.
 2. `ConnectFunction` validates the token with Cognito and stores `connectionId → playerId` in DynamoDB.
@@ -11,7 +11,7 @@ See [`diagrams/seq-matchmaking.puml`](diagrams/seq-matchmaking.puml).
 
 ## Scenario 2: Play Card
 
-See [`diagrams/seq-play-card.puml`](diagrams/seq-play-card.puml).
+See [`diagrams/seq-play-card.svg`](diagrams/seq-play-card.svg).
 
 1. Active player sends `playCard` with a card index.
 2. `PlayCardFunction` loads `GameState` from DynamoDB and delegates to `Game Rules`.
@@ -21,7 +21,7 @@ See [`diagrams/seq-play-card.puml`](diagrams/seq-play-card.puml).
 
 ## Scenario 3: End Turn
 
-See [`diagrams/seq-end-turn.puml`](diagrams/seq-end-turn.puml).
+See [`diagrams/seq-end-turn.svg`](diagrams/seq-end-turn.svg).
 
 1. Active player sends `endTurn`.
 2. `EndTurnFunction` loads state and calls `end_turn()` in the domain layer.

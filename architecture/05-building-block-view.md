@@ -2,7 +2,7 @@
 
 ## 5.1 Level 1 — Containers
 
-See [`diagrams/c4-container.puml`](diagrams/c4-container.puml).
+See [`diagrams/c4-container.svg`](diagrams/c4-container.svg).
 
 | Container | Technology | Responsibility |
 |-----------|-----------|---------------|
@@ -17,7 +17,7 @@ See [`diagrams/c4-container.puml`](diagrams/c4-container.puml).
 
 ## 5.2 Level 2 — Components (Game Engine Lambdas)
 
-See [`diagrams/c4-component.puml`](diagrams/c4-component.puml).
+See [`diagrams/c4-component.svg`](diagrams/c4-component.svg).
 
 Each game-action Lambda (PlayCard, EndTurn) is structured identically:
 

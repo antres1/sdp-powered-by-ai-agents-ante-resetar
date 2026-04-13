@@ -15,7 +15,7 @@ database — is an external system.
 
 ## 3.2 Context Diagram
 
-See [`diagrams/c4-context.puml`](diagrams/c4-context.puml).
+See [`diagrams/c4-context.svg`](diagrams/c4-context.svg).
 
 ## 3.3 External Interfaces
 
