@@ -1,0 +1,47 @@
+@startuml deployment
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+title Deployment Diagram — Trading Card Game (AWS)
+
+Deployment_Node(browser, "Player Browser", "Any OS") {
+  Container(client, "Web Client", "HTML/JS", "Game UI")
+}
+
+Deployment_Node(aws, "AWS Region (eu-central-1)") {
+
+  Deployment_Node(edge, "Edge / API Layer") {
+    Container(apigw, "API Gateway", "WebSocket API", "Routes actions to Lambdas")
+    Container(cognito, "Cognito User Pool", "AWS Cognito", "Player auth & JWT issuance")
+  }
+
+  Deployment_Node(compute, "Serverless Compute") {
+    Container(connect_fn, "ConnectFunction", "Lambda / Python 3.12", "")
+    Container(disconnect_fn, "DisconnectFunction", "Lambda / Python 3.12", "")
+    Container(matchmaking_fn, "MatchmakingFunction", "Lambda / Python 3.12", "")
+    Container(play_card_fn, "PlayCardFunction", "Lambda / Python 3.12", "")
+    Container(end_turn_fn, "EndTurnFunction", "Lambda / Python 3.12", "")
+  }
+
+  Deployment_Node(storage, "Storage") {
+    ContainerDb(dynamo, "DynamoDB", "On-demand table", "Game state, connections, queue")
+  }
+}
+
+Rel(client, apigw, "wss://", "WebSocket")
+Rel(apigw, connect_fn, "$connect")
+Rel(apigw, disconnect_fn, "$disconnect")
+Rel(apigw, matchmaking_fn, "joinQueue")
+Rel(apigw, play_card_fn, "playCard")
+Rel(apigw, end_turn_fn, "endTurn")
+Rel(connect_fn, cognito, "ValidateJWT", "HTTPS")
+Rel(connect_fn, dynamo, "R/W", "HTTPS")
+Rel(disconnect_fn, dynamo, "R/W", "HTTPS")
+Rel(matchmaking_fn, dynamo, "R/W", "HTTPS")
+Rel(play_card_fn, dynamo, "R/W", "HTTPS")
+Rel(end_turn_fn, dynamo, "R/W", "HTTPS")
+Rel(play_card_fn, apigw, "postToConnection", "HTTPS")
+Rel(end_turn_fn, apigw, "postToConnection", "HTTPS")
+Rel(matchmaking_fn, apigw, "postToConnection", "HTTPS")
+
+SHOW_LEGEND()
+@enduml

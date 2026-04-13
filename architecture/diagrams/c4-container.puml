@@ -1,0 +1,39 @@
+@startuml c4-container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Container Diagram — Trading Card Game
+
+Person(player, "Player", "Plays via web browser")
+
+System_Boundary(tcg, "Trading Card Game System") {
+  Container(client, "Web Client", "HTML/JS", "Game UI; manages WebSocket connection and renders game state")
+  Container(apigw, "API Gateway", "AWS WebSocket API", "Routes WebSocket frames to Lambda functions by action route")
+  Container(connect_fn, "ConnectFunction", "Python 3.12 / Lambda", "Authenticates JWT, stores connectionId in DynamoDB")
+  Container(disconnect_fn, "DisconnectFunction", "Python 3.12 / Lambda", "Removes connectionId from DynamoDB")
+  Container(matchmaking_fn, "MatchmakingFunction", "Python 3.12 / Lambda", "Pairs waiting players; creates new GameState")
+  Container(play_card_fn, "PlayCardFunction", "Python 3.12 / Lambda", "Validates and applies a card-play action to GameState")
+  Container(end_turn_fn, "EndTurnFunction", "Python 3.12 / Lambda", "Advances turn: refills mana, draws card, switches active player")
+}
+
+System_Ext(cognito, "AWS Cognito", "Issues and validates JWT tokens")
+System_Ext(dynamo, "Amazon DynamoDB", "Single-table: Players, Games, Connections")
+
+Rel(player, client, "Plays game", "HTTPS / WSS")
+Rel(client, apigw, "Sends actions", "WebSocket (wss://)")
+Rel(apigw, connect_fn, "$connect", "Lambda invoke")
+Rel(apigw, disconnect_fn, "$disconnect", "Lambda invoke")
+Rel(apigw, matchmaking_fn, "joinQueue", "Lambda invoke")
+Rel(apigw, play_card_fn, "playCard", "Lambda invoke")
+Rel(apigw, end_turn_fn, "endTurn", "Lambda invoke")
+Rel(connect_fn, cognito, "Validates JWT", "HTTPS")
+Rel(connect_fn, dynamo, "Stores connectionId", "HTTPS")
+Rel(disconnect_fn, dynamo, "Removes connectionId", "HTTPS")
+Rel(matchmaking_fn, dynamo, "Reads queue, writes GameState", "HTTPS")
+Rel(play_card_fn, dynamo, "Reads/writes GameState", "HTTPS")
+Rel(end_turn_fn, dynamo, "Reads/writes GameState", "HTTPS")
+Rel(play_card_fn, apigw, "Pushes state to both players", "HTTPS (Management API)")
+Rel(end_turn_fn, apigw, "Pushes state to both players", "HTTPS (Management API)")
+Rel(matchmaking_fn, apigw, "Notifies matched players", "HTTPS (Management API)")
+
+SHOW_LEGEND()
+@enduml
