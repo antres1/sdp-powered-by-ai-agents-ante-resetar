@@ -25,7 +25,7 @@ Total stories written: 12/12 ✅
 
 | Story ID | Title | Written | Impl Status | File |
 |----------|-------|---------|-------------|------|
-| CONN-STORY-001 | Player connects via WebSocket with JWT auth | ✅ | TODO | [conn-story-001.md](conn-story-001.md) |
+| CONN-STORY-001 | Player connects via WebSocket with JWT auth | ✅ | DONE | [conn-story-001.md](conn-story-001.md) |
 | MATCH-STORY-001 | Player joins queue and gets matched | ✅ | TODO | [match-story-001.md](match-story-001.md) |
 | GAME-STORY-001 | Player plays a card | ✅ | TODO | [game-story-001.md](game-story-001.md) |
 | GAME-STORY-002 | Player ends their turn | ✅ | TODO | [game-story-002.md](game-story-002.md) |
