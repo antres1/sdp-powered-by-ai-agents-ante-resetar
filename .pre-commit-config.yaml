@@ -28,15 +28,15 @@ repos:
     rev: v0.11.4
     hooks:
       - id: ruff
-        args: [--fix]
+        args: [ --fix ]
 
   # Security scanning
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3
     hooks:
       - id: bandit
-        args: [-c, pyproject.toml]
-        additional_dependencies: ["bandit[toml]"]
+        args: [ -c, pyproject.toml ]
+        additional_dependencies: [ "bandit[toml]" ]
 
   # Secret detection
   - repo: https://github.com/Yelp/detect-secrets
@@ -51,7 +51,7 @@ repos:
         name: Commit message format
         entry: scripts/hooks/check-commit-msg.sh
         language: system
-        stages: [commit-msg]
+        stages: [ commit-msg ]
         always_run: true
 
   # PlantUML validation
@@ -61,5 +61,18 @@ repos:
         name: PlantUML Validation
         entry: bash scripts/hooks/validate-plantuml.sh
         language: system
-        files: '\.puml$'
+        files: "\\.puml$"
         pass_filenames: false
+
+      - id: commit-msg-format
+        name: Commit message format
+        entry: bash scripts/hooks/check-commit-msg.sh
+        language: system
+        stages: [ commit-msg ]
+
+      - id: docker-test
+        name: Docker test
+        entry: bash scripts/hooks/docker-test.sh
+        language: system
+        pass_filenames: false
+        stages: [ pre-commit ]
