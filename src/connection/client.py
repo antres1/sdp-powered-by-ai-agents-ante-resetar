@@ -21,9 +21,15 @@ class WebSocketClient:
         self._open_ws = open_ws
         self._ws: Any | None = None
         self.status = ConnectionStatus.DISCONNECTED
+        self.error_message: str | None = None
 
     def start(self) -> None:
         token = self._token_provider()
         url = f"{self._base_url}?token={token}"
-        self._ws = self._open_ws(url)
+        try:
+            self._ws = self._open_ws(url)
+        except Exception:
+            self.status = ConnectionStatus.AUTH_FAILED
+            self.error_message = "Authentication failed — please log in again"
+            return
         self.status = ConnectionStatus.CONNECTED
