@@ -93,113 +93,116 @@ SO THAT the layer structure matches the Lambda runtime's `PYTHONPATH` convention
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-008.1: Build and deploy domain Lambda Layer via SAM
+### GAME-INFRA-008.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 7.2 — Infrastructure as Code; Section 9 — ADR-005
+**Architecture Reference**: Section 9 — ADR-005 (shared domain code); Section 4.2 — Hexagonal Architecture; Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
-I WANT the domain code built into a Lambda Layer and deployed via SAM
-SO THAT all Lambdas reference a single versioned copy of the domain logic
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Layer deployed and attached to all game Lambdas
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-008.1-S1
 
 **GIVEN**
-* `template.yaml` defines a `DomainLayer` (`AWS::Serverless::LayerVersion`) with `ContentUri: domain/` and `CompatibleRuntimes: [python3.12]`
-* PlayCardFunction, EndTurnFunction, MatchmakingFunction, and RejoinFunction reference `DomainLayer` in their `Layers` property
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the domain package under `src/domain/`
 
 **WHEN**
-* `sam build && sam deploy` completes
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The Lambda Layer version exists in the AWS account
-* Each function's configuration lists the layer ARN
-* A test invocation of each function succeeds without `ImportError`
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-008.2: DynamoDB — no new table required for this story
+### GAME-INFRA-008.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 9 — ADR-004, ADR-005
 
 AS A DevOps engineer
-I WANT to confirm that packaging domain code as a layer requires no DynamoDB changes
-SO THAT this story has no storage impact
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the domain package and its test suite can import every required package without errors
 
-#### SCENARIO 1: Existing GameTable unchanged after layer deployment
+#### SCENARIO 1: Domain package importable with no AWS dependencies
 
 **Scenario ID**: GAME-INFRA-008.2-S1
 
 **GIVEN**
-* The `GameTable` is deployed and contains live game data
+* `requirements.txt` lists only pure-Python test and runtime dependencies (no boto3)
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* The domain layer is deployed and Lambdas are updated to reference it
+* `docker run --rm tcg-game python -c "from domain.game import play_card, end_turn, is_game_over; from domain.models import GameState, RuleViolation"` is executed
 
 **THEN**
-* The `GameTable` schema and data are unchanged
-* All existing access patterns continue to work
+* The command exits with code 0
+* No `ModuleNotFoundError`, `ImportError`, or AWS-related import error is printed
 
 ---
 
-### GAME-INFRA-008.3: CI pipeline builds and publishes the layer
+### GAME-INFRA-008.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 7.3 — Deployment Pipeline
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 9 — ADR-005
 
 AS A DevOps engineer
-I WANT the GitHub Actions CI pipeline to build the domain layer as part of `sam build`
-SO THAT every push produces a fresh layer version without manual steps
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover domain package tests without manual path configuration
 
-#### SCENARIO 1: CI pipeline builds layer and deploys successfully
+#### SCENARIO 1: pytest collects domain tests without import errors
 
 **Scenario ID**: GAME-INFRA-008.3-S1
 
 **GIVEN**
-* The `template.yaml` defines `DomainLayer` with `BuildMethod: python3.12`
-* A `git push` triggers the CI pipeline
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
+* The domain package is at `src/domain/`
 
 **WHEN**
-* The pipeline runs `sam build && sam deploy`
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* The layer is built and a new layer version is published
-* All Lambda functions are updated to reference the new layer ARN
-* The pipeline exits with code 0
+* pytest prints a list of collected test items including domain package tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-008.4: CloudWatch — layer import errors surfaced in Lambda logs
+### GAME-INFRA-008.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT any layer import failures to appear as errors in CloudWatch Logs
-SO THAT misconfigured layer attachments are immediately detectable
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the domain package is verified as correct and free of AWS imports before any deployment step
 
-#### SCENARIO 1: ImportError from missing layer appears in CloudWatch
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-008.4-S1
 
 **GIVEN**
-* A Lambda function is deployed without the domain layer attached (misconfiguration)
+* The Docker image has been built successfully (GAME-INFRA-008.1)
+* All dependencies are installed (GAME-INFRA-008.2)
+* Test discovery succeeds (GAME-INFRA-008.3)
 
 **WHEN**
-* The Lambda is invoked
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* An `ImportError` traceback appears in the function's CloudWatch log group
-* The Lambda returns HTTP 500
+* All tests pass including domain package purity tests
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-008.1 (build DomainLayer in SAM template, attach to all Lambdas)
-  → GAME-INFRA-008.2 (confirm no DynamoDB changes)
-  → GAME-INFRA-008.3 (CI pipeline layer build)
-  → GAME-INFRA-008.4 (CloudWatch import error observability)
-  → GAME-BE-008.1 (structure domain package under python/domain/ for layer compatibility)
+GAME-INFRA-008.1 (Dockerfile builds)
+  → GAME-INFRA-008.2 (dependencies installed, domain importable without AWS)
+  → GAME-INFRA-008.3 (pytest discovery)
+  → GAME-INFRA-008.4 (test suite passes in container)
+  → GAME-BE-008.1 (structure domain package under src/domain/ for layer compatibility)
   → GAME-STORY-008 (E2E: deploy stack, invoke each Lambda, verify domain imports succeed)
 ```

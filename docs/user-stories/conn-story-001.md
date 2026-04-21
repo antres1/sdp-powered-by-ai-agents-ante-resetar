@@ -130,126 +130,115 @@ SO THAT subsequent Lambdas can identify which player owns a given connection
 
 ## Infrastructure Sub-Stories
 
-### CONN-INFRA-001.1: Deploy ConnectFunction Lambda
+### CONN-INFRA-001.1: Dockerfile builds successfully for the connection service
 
-**Architecture Reference**: Section 7.2 — Infrastructure as Code (ConnectFunction)
+**Architecture Reference**: Section 5.1 — Building Block View (ConnectFunction); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
-I WANT the ConnectFunction Lambda deployed via SAM with the correct runtime and permissions
-SO THAT the `$connect` WebSocket route has a compute target to invoke
+I WANT the connection service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Lambda is deployed and invocable
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: CONN-INFRA-001.1-S1
 
 **GIVEN**
-* `template.yaml` defines `ConnectFunction` with `Runtime: python3.12` and the `$connect` route integration
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the connection service source code including JWT validation logic
 
 **WHEN**
-* `sam deploy` completes successfully
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The Lambda function exists in the AWS account
-* A manual `aws lambda invoke` with a synthetic `$connect` payload returns a 200 response
-* The function appears in CloudWatch Logs with its log group
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### CONN-INFRA-001.2: Provision DynamoDB table with connection access pattern
+### CONN-INFRA-001.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns; Section 7.2 — Infrastructure as Code (GameTable)
+**Architecture Reference**: Section 8.1 — Authentication & Authorisation; Section 5.1 — ConnectFunction
 
 AS A DevOps engineer
-I WANT the DynamoDB single table deployed with the correct key schema and TTL enabled
-SO THAT connection records can be stored and automatically expired after 24 hours
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the connection service and its test suite can import every required package without errors
 
-#### SCENARIO 1: Table exists with TTL enabled
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: CONN-INFRA-001.2-S1
 
 **GIVEN**
-* `template.yaml` defines `GameTable` with `BillingMode: PAY_PER_REQUEST`, `PK` (HASH) and `SK` (RANGE) keys, and TTL attribute `ttl`
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* `sam deploy` completes
+* `docker run --rm tcg-game python -c "import pytest; import domain.game"` is executed
 
 **THEN**
-* The DynamoDB table exists in `eu-central-1`
-* TTL is enabled on the `ttl` attribute
-* A `PutItem` with `PK=CONN#test, SK=PLAYER` succeeds
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### CONN-INFRA-001.3: Wire `$connect` route on WebSocket API Gateway
+### CONN-INFRA-001.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — API Gateway; Section 7.2 — Infrastructure as Code (WebSocketApi)
+**Architecture Reference**: Section 5.1 — ConnectFunction; Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the WebSocket API Gateway `$connect` route integrated with ConnectFunction
-SO THAT incoming WebSocket handshakes trigger the authentication Lambda
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover connection service test files without manual path configuration
 
-#### SCENARIO 1: `$connect` route delivers event to Lambda
+#### SCENARIO 1: pytest collects connection tests without import errors
 
 **Scenario ID**: CONN-INFRA-001.3-S1
 
 **GIVEN**
-* `template.yaml` defines `WebSocketApi` with a `$connect` route pointing to `ConnectFunction`
-* The stack is deployed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* A WebSocket client connects to the API endpoint with a valid JWT
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* API Gateway invokes `ConnectFunction` with a `$connect` event containing `connectionId` and `queryStringParameters`
-* The Lambda returns HTTP 200 and the WebSocket handshake completes
+* pytest prints a list of collected test items including connection tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### CONN-INFRA-001.4: CloudWatch alarm and structured logging for ConnectFunction
+### CONN-INFRA-001.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability; Section 10.1 — Quality Tree (Operability)
+**Architecture Reference**: Section 5.1 — ConnectFunction; Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT ConnectFunction to emit structured JSON logs and have a CloudWatch alarm on errors
-SO THAT authentication failures are observable and on-call engineers are alerted within 30 seconds
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log emitted on every invocation
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: CONN-INFRA-001.4-S1
 
 **GIVEN**
-* ConnectFunction uses AWS Lambda Powertools `Logger`
-* A `$connect` event is processed (success or failure)
+* The Docker image has been built successfully (CONN-INFRA-001.1)
+* All dependencies are installed (CONN-INFRA-001.2)
+* Test discovery succeeds (CONN-INFRA-001.3)
 
 **WHEN**
-* The Lambda completes execution
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry appears in `/aws/lambda/ConnectFunction` containing `connectionId`, `playerId` (or error reason), and `durationMs`
-
-#### SCENARIO 2: CloudWatch alarm triggers on Lambda errors
-
-**Scenario ID**: CONN-INFRA-001.4-S2
-
-**GIVEN**
-* A CloudWatch alarm is defined on the `Errors` metric for `ConnectFunction` with threshold ≥ 1 over 1 minute
-
-**WHEN**
-* ConnectFunction throws an unhandled exception
-
-**THEN**
-* The alarm transitions to `ALARM` state within 60 seconds
-* The error and stack trace are visible in CloudWatch Logs
+* All tests pass including connection and JWT validation scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-CONN-INFRA-001.2 (DynamoDB table)
-  → CONN-INFRA-001.1 (Lambda deploy)
-  → CONN-INFRA-001.3 ($connect route)
-  → CONN-INFRA-001.4 (monitoring)
+CONN-INFRA-001.1 (Dockerfile builds)
+  → CONN-INFRA-001.2 (dependencies installed)
+  → CONN-INFRA-001.3 (pytest discovery)
+  → CONN-INFRA-001.4 (test suite passes in container)
   → CONN-BE-001.1 (ConnectFunction logic)
   → CONN-FE-001.1 (client WebSocket lifecycle)
   → CONN-STORY-001 (E2E: connect with JWT, verify DynamoDB record)

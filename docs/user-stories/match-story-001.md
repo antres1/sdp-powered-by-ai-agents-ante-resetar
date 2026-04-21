@@ -146,136 +146,115 @@ SO THAT exactly one game is created per pair with no duplicate matches
 
 ## Infrastructure Sub-Stories
 
-### MATCH-INFRA-001.1: Deploy MatchmakingFunction Lambda
+### MATCH-INFRA-001.1: Dockerfile builds successfully for the matchmaking service
 
-**Architecture Reference**: Section 7.2 — Infrastructure as Code (MatchmakingFunction)
+**Architecture Reference**: Section 5.1 — Building Block View (MatchmakingFunction); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
-I WANT the MatchmakingFunction Lambda deployed via SAM
-SO THAT the `joinQueue` WebSocket route has a compute target
+I WANT the matchmaking service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Lambda is deployed and invocable
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: MATCH-INFRA-001.1-S1
 
 **GIVEN**
-* `template.yaml` defines `MatchmakingFunction` with `Runtime: python3.12` and the `joinQueue` route integration
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the matchmaking service source code
 
 **WHEN**
-* `sam deploy` completes
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The Lambda exists in the AWS account
-* A synthetic `joinQueue` invocation returns without a 5xx error
-* The function's log group exists in CloudWatch
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### MATCH-INFRA-001.2: DynamoDB queue and game access patterns
+### MATCH-INFRA-001.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Queue entry, Game)
+**Architecture Reference**: Section 4.3 — Bounded Context: Matchmaking; Section 5.1 — MatchmakingFunction
 
 AS A DevOps engineer
-I WANT the DynamoDB table to support queue and game item access patterns
-SO THAT matchmaking reads and writes succeed with correct key structure
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the matchmaking service and its test suite can import every required package without errors
 
-#### SCENARIO 1: Queue item can be written and conditionally deleted
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: MATCH-INFRA-001.2-S1
 
 **GIVEN**
-* The `GameTable` is deployed with `PK` (HASH) and `SK` (RANGE)
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* A `PutItem` with `PK=QUEUE, SK=PLAYER#<id>` is issued followed by a conditional `DeleteItem`
+* `docker run --rm tcg-game python -c "import pytest; import domain.game; from domain.models import GameState"` is executed
 
 **THEN**
-* Both operations succeed
-* A second conditional `DeleteItem` on the same key fails with `ConditionalCheckFailedException`
-
-#### SCENARIO 2: Game state item can be written and retrieved
-
-**Scenario ID**: MATCH-INFRA-001.2-S2
-
-**GIVEN**
-* The `GameTable` is deployed
-
-**WHEN**
-* A `PutItem` with `PK=GAME#<gameId>, SK=STATE` is issued and then a `GetItem` is performed
-
-**THEN**
-* The retrieved item matches the written item
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### MATCH-INFRA-001.3: Wire `joinQueue` route on WebSocket API Gateway
+### MATCH-INFRA-001.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — API Gateway; Section 7.2 — Infrastructure as Code (WebSocketApi)
+**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the `joinQueue` WebSocket route integrated with MatchmakingFunction
-SO THAT player queue requests trigger the matchmaking Lambda
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover matchmaking test files without manual path configuration
 
-#### SCENARIO 1: `joinQueue` route delivers event to Lambda
+#### SCENARIO 1: pytest collects matchmaking tests without import errors
 
 **Scenario ID**: MATCH-INFRA-001.3-S1
 
 **GIVEN**
-* `template.yaml` defines a `joinQueue` route on `WebSocketApi` pointing to `MatchmakingFunction`
-* The stack is deployed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* A connected client sends `{"action": "joinQueue"}`
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* API Gateway invokes `MatchmakingFunction` with the correct event payload containing `connectionId` and `body`
+* pytest prints a list of collected test items including matchmaking tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### MATCH-INFRA-001.4: CloudWatch alarm and structured logging for MatchmakingFunction
+### MATCH-INFRA-001.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability; Section 10.1 — Quality Tree (Operability)
+**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT MatchmakingFunction to emit structured logs and have a CloudWatch error alarm
-SO THAT matchmaking failures are observable and alertable
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log emitted on match creation
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: MATCH-INFRA-001.4-S1
 
 **GIVEN**
-* MatchmakingFunction uses AWS Lambda Powertools `Logger`
-* A match is successfully created
+* The Docker image has been built successfully (MATCH-INFRA-001.1)
+* All dependencies are installed (MATCH-INFRA-001.2)
+* Test discovery succeeds (MATCH-INFRA-001.3)
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry appears in `/aws/lambda/MatchmakingFunction` containing `gameId`, `player1Id`, `player2Id`, and `durationMs`
-
-#### SCENARIO 2: CloudWatch alarm triggers on Lambda errors
-
-**Scenario ID**: MATCH-INFRA-001.4-S2
-
-**GIVEN**
-* A CloudWatch alarm is defined on the `Errors` metric for `MatchmakingFunction` with threshold ≥ 1 over 1 minute
-
-**WHEN**
-* MatchmakingFunction throws an unhandled exception
-
-**THEN**
-* The alarm transitions to `ALARM` state within 60 seconds
+* All tests pass including matchmaking and race-condition scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-MATCH-INFRA-001.2 (DynamoDB queue + game patterns — table already exists from CONN-STORY-001)
-  → MATCH-INFRA-001.1 (Lambda deploy)
-  → MATCH-INFRA-001.3 (joinQueue route)
-  → MATCH-INFRA-001.4 (monitoring)
+MATCH-INFRA-001.1 (Dockerfile builds)
+  → MATCH-INFRA-001.2 (dependencies installed)
+  → MATCH-INFRA-001.3 (pytest discovery)
+  → MATCH-INFRA-001.4 (test suite passes in container)
   → MATCH-BE-001.1 (MatchmakingFunction logic)
   → MATCH-FE-001.1 (lobby UI + match transition)
   → MATCH-STORY-001 (E2E: two clients connect, join queue, verify game created and both notified)

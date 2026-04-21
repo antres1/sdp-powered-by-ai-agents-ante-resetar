@@ -126,120 +126,115 @@ SO THAT the player is registered for matching and informed of their status
 
 ## Infrastructure Sub-Stories
 
-### MATCH-INFRA-002.1: Compute — waiting path handled within MatchmakingFunction (no new Lambda)
+### MATCH-INFRA-002.1: Dockerfile builds successfully for the matchmaking service
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.1 — Building Block View (MatchmakingFunction); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
-I WANT to confirm that the waiting-queue path runs inside the existing MatchmakingFunction
-SO THAT no additional compute resource is needed
+I WANT the matchmaking service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Waiting response sent within existing Lambda invocation
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: MATCH-INFRA-002.1-S1
 
 **GIVEN**
-* MatchmakingFunction is deployed (MATCH-STORY-001)
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the matchmaking service source code including the waiting-queue path
 
 **WHEN**
-* A `joinQueue` event is processed with no opponent in the queue
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The queue write and waiting response occur within the same Lambda invocation
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### MATCH-INFRA-002.2: DynamoDB — queue entry written and readable
+### MATCH-INFRA-002.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Queue entry)
+**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 5.3 — DynamoDB Access Patterns (Queue entry)
 
 AS A DevOps engineer
-I WANT the queue entry to be written to DynamoDB and retrievable by MatchmakingFunction
-SO THAT a subsequent player joining the queue can find and claim the waiting entry
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the waiting-queue logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: Queue item exists after player joins with no opponent
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: MATCH-INFRA-002.2-S1
 
 **GIVEN**
-* No queue items exist
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* MatchmakingFunction processes a `joinQueue` event
+* `docker run --rm tcg-game python -c "import pytest; import domain.game"` is executed
 
 **THEN**
-* A `GetItem` on `PK=QUEUE, SK=PLAYER#<playerId>` returns the written item with `connectionId`
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### MATCH-INFRA-002.3: WebSocket — waiting status delivered to joining player
+### MATCH-INFRA-002.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (waiting branch)
+**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the `{"status": "waiting"}` message delivered to the joining player's WebSocket connection
-SO THAT the client can display the waiting state
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover waiting-queue test files without manual path configuration
 
-#### SCENARIO 1: Waiting message delivered to joining player
+#### SCENARIO 1: pytest collects waiting-queue tests without import errors
 
 **Scenario ID**: MATCH-INFRA-002.3-S1
 
 **GIVEN**
-* The joining player has an active WebSocket connection
-* No opponent is in the queue
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* MatchmakingFunction calls `postToConnection` for the joining player
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* The player's client receives `{"status": "waiting"}` within 500 ms
+* pytest prints a list of collected test items including waiting-queue tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### MATCH-INFRA-002.4: CloudWatch — queue entry events logged
+### MATCH-INFRA-002.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT queue entry events to appear in structured logs
-SO THAT queue depth and wait times are observable
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log emitted when player enters queue
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: MATCH-INFRA-002.4-S1
 
 **GIVEN**
-* MatchmakingFunction uses AWS Lambda Powertools `Logger`
-* A player joins the queue with no opponent available
+* The Docker image has been built successfully (MATCH-INFRA-002.1)
+* All dependencies are installed (MATCH-INFRA-002.2)
+* Test discovery succeeds (MATCH-INFRA-002.3)
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry in `/aws/lambda/MatchmakingFunction` contains `playerId`, `event: "queue_entry"`, and `durationMs`
-
-#### SCENARIO 2: CloudWatch alarm triggers on Lambda errors
-
-**Scenario ID**: MATCH-INFRA-002.4-S2
-
-**GIVEN**
-* A CloudWatch alarm is defined on the `Errors` metric for `MatchmakingFunction` with threshold ≥ 1 over 1 minute
-
-**WHEN**
-* MatchmakingFunction throws an unhandled exception during queue processing
-
-**THEN**
-* The alarm transitions to `ALARM` state within 60 seconds
+* All tests pass including waiting-queue and idempotent re-join scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-MATCH-INFRA-002.1 (confirm no new Lambda — reuses MatchmakingFunction)
-  → MATCH-INFRA-002.2 (DynamoDB queue entry)
-  → MATCH-INFRA-002.3 (WebSocket waiting delivery)
-  → MATCH-INFRA-002.4 (logging)
+MATCH-INFRA-002.1 (Dockerfile builds)
+  → MATCH-INFRA-002.2 (dependencies installed)
+  → MATCH-INFRA-002.3 (pytest discovery)
+  → MATCH-INFRA-002.4 (test suite passes in container)
   → MATCH-BE-002.1 (waiting path in MatchmakingFunction)
   → MATCH-FE-002.1 (persistent waiting indicator)
   → MATCH-STORY-002 (E2E: join queue alone → receive waiting status, DynamoDB entry exists)

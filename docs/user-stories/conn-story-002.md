@@ -108,108 +108,115 @@ SO THAT stale connection mappings are removed promptly (TTL is a fallback, not t
 
 ## Infrastructure Sub-Stories
 
-### CONN-INFRA-002.1: Deploy DisconnectFunction Lambda
+### CONN-INFRA-002.1: Dockerfile builds successfully for the connection service
 
-**Architecture Reference**: Section 7.2 — Infrastructure as Code (DisconnectFunction)
+**Architecture Reference**: Section 5.1 — Building Block View (DisconnectFunction); Section 8.5 — WebSocket Connection Lifecycle
 
 AS A DevOps engineer
-I WANT DisconnectFunction deployed via SAM with the `$disconnect` route integration
-SO THAT WebSocket disconnections trigger the cleanup Lambda
+I WANT the connection service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Lambda deployed and invocable
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: CONN-INFRA-002.1-S1
 
 **GIVEN**
-* `template.yaml` defines `DisconnectFunction` with `Runtime: python3.12` and the `$disconnect` route
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the connection service source code including disconnect logic
 
 **WHEN**
-* `sam deploy` completes
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The Lambda exists and a synthetic invocation returns without a 5xx error
-* The log group `/aws/lambda/DisconnectFunction` exists
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### CONN-INFRA-002.2: DynamoDB DeleteItem permission for DisconnectFunction
+### CONN-INFRA-002.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Connection)
+**Architecture Reference**: Section 8.5 — WebSocket Connection Lifecycle; Section 5.1 — DisconnectFunction
 
 AS A DevOps engineer
-I WANT DisconnectFunction's IAM role to allow `DeleteItem` on `GameTable`
-SO THAT it can remove connection records on disconnect
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the disconnect logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: DeleteItem succeeds for DisconnectFunction role
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: CONN-INFRA-002.2-S1
 
 **GIVEN**
-* DisconnectFunction's execution role has `dynamodb:DeleteItem` on `GameTable`
-* A `CONN#<connectionId> / PLAYER` item exists
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* DisconnectFunction calls `DeleteItem`
+* `docker run --rm tcg-game python -c "import pytest; import domain.game"` is executed
 
 **THEN**
-* The item is removed without an `AccessDeniedException`
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### CONN-INFRA-002.3: Wire `$disconnect` route on WebSocket API Gateway
+### CONN-INFRA-002.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — API Gateway; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.1 — DisconnectFunction; Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the `$disconnect` route integrated with DisconnectFunction
-SO THAT all WebSocket disconnections trigger cleanup
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover disconnect test files without manual path configuration
 
-#### SCENARIO 1: `$disconnect` route delivers event to Lambda
+#### SCENARIO 1: pytest collects disconnect tests without import errors
 
 **Scenario ID**: CONN-INFRA-002.3-S1
 
 **GIVEN**
-* `template.yaml` defines a `$disconnect` route pointing to `DisconnectFunction`
-* The stack is deployed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* A WebSocket client disconnects
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* API Gateway invokes `DisconnectFunction` with the `connectionId`
+* pytest prints a list of collected test items including disconnect tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### CONN-INFRA-002.4: CloudWatch logging for DisconnectFunction
+### CONN-INFRA-002.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.1 — DisconnectFunction; Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT DisconnectFunction to emit structured logs on every invocation
-SO THAT disconnect events and stale-connection warnings are observable
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log emitted on disconnect
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: CONN-INFRA-002.4-S1
 
 **GIVEN**
-* DisconnectFunction uses AWS Lambda Powertools `Logger`
+* The Docker image has been built successfully (CONN-INFRA-002.1)
+* All dependencies are installed (CONN-INFRA-002.2)
+* Test discovery succeeds (CONN-INFRA-002.3)
 
 **WHEN**
-* A `$disconnect` event is processed
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry appears in `/aws/lambda/DisconnectFunction` containing `connectionId` and `durationMs`
+* All tests pass including disconnect and GoneException scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-CONN-INFRA-002.2 (IAM DeleteItem — table already exists)
-  → CONN-INFRA-002.1 (Lambda deploy)
-  → CONN-INFRA-002.3 ($disconnect route)
-  → CONN-INFRA-002.4 (logging)
+CONN-INFRA-002.1 (Dockerfile builds)
+  → CONN-INFRA-002.2 (dependencies installed)
+  → CONN-INFRA-002.3 (pytest discovery)
+  → CONN-INFRA-002.4 (test suite passes in container)
   → CONN-BE-002.1 (DisconnectFunction logic + GoneException handling)
   → CONN-FE-002.1 (disconnection UI indicator)
   → CONN-STORY-002 (E2E: disconnect, verify DynamoDB record removed)

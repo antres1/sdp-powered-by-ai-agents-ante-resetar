@@ -129,107 +129,115 @@ SO THAT the Overload rule is unit-testable without infrastructure
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-006.1: Compute — Overload handled within EndTurnFunction (no new Lambda)
+### GAME-INFRA-006.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.1 — EndTurnFunction; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 1.1 — Game Rules (Overload)
 
 AS A DevOps engineer
-I WANT to confirm that Overload logic runs inside the existing EndTurnFunction
-SO THAT no additional compute resource is needed
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Overload discard occurs within existing Lambda invocation
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-006.1-S1
 
 **GIVEN**
-* EndTurnFunction is deployed (GAME-STORY-002)
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the game service source code including Overload logic
 
 **WHEN**
-* An end-turn action is processed with a full opponent hand
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The discard and state persistence occur within the same Lambda invocation
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-006.2: DynamoDB — Overload state persisted correctly
+### GAME-INFRA-006.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Game); Section 8.4 — Game State Consistency
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 1.1 — Overload rule
 
 AS A DevOps engineer
-I WANT the post-Overload game state written to DynamoDB with the correct hand and deck sizes
-SO THAT the discard is durable
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the Overload logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: DynamoDB item reflects discard after Overload
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: GAME-INFRA-006.2-S1
 
 **GIVEN**
-* A `GAME#<gameId> / STATE` item exists with opponent hand size = 5 and deck size = 3
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* EndTurnFunction processes the end-turn action
+* `docker run --rm tcg-game python -c "import pytest; from domain.game import end_turn"` is executed
 
 **THEN**
-* A `GetItem` on `GAME#<gameId> / STATE` returns state with opponent hand size = 5 and deck size = 2
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### GAME-INFRA-006.3: WebSocket — updated state broadcast to both players after Overload
+### GAME-INFRA-006.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 3; Section 8.5 — WebSocket Connection Lifecycle
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the post-Overload game state delivered to both players via WebSocket
-SO THAT both clients reflect the discard in real time
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover Overload test files without manual path configuration
 
-#### SCENARIO 1: Both players receive updated state after Overload
+#### SCENARIO 1: pytest collects Overload tests without import errors
 
 **Scenario ID**: GAME-INFRA-006.3-S1
 
 **GIVEN**
-* Both players have active WebSocket connections
-* An end-turn with Overload is processed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* EndTurnFunction calls `postToConnection` for both players
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* Both clients receive `{"gameState": {...}}` with hand size = 5 and reduced deck size within 500 ms (p95)
+* pytest prints a list of collected test items including Overload tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-006.4: CloudWatch — Overload events logged
+### GAME-INFRA-006.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT Overload events to appear in structured logs
-SO THAT they are auditable and distinguishable from normal draws
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log entry emitted on Overload
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-006.4-S1
 
 **GIVEN**
-* EndTurnFunction uses AWS Lambda Powertools `Logger`
-* An Overload event occurs
+* The Docker image has been built successfully (GAME-INFRA-006.1)
+* All dependencies are installed (GAME-INFRA-006.2)
+* Test discovery succeeds (GAME-INFRA-006.3)
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry in `/aws/lambda/EndTurnFunction` contains `gameId`, `playerId`, `event: "overload"`, `discardedCard`, and `durationMs`
+* All tests pass including Overload scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-006.1 (confirm no new Lambda — reuses EndTurnFunction)
-  → GAME-INFRA-006.2 (DynamoDB discard persistence)
-  → GAME-INFRA-006.3 (WebSocket broadcast)
-  → GAME-INFRA-006.4 (logging)
+GAME-INFRA-006.1 (Dockerfile builds)
+  → GAME-INFRA-006.2 (dependencies installed)
+  → GAME-INFRA-006.3 (pytest discovery)
+  → GAME-INFRA-006.4 (test suite passes in container)
   → GAME-BE-006.1 (Overload in end_turn() pure function)
   → GAME-FE-006.1 (Overload UI indicator)
   → GAME-STORY-006 (E2E: end turn with full hand → card discarded, hand stays at 5, both players notified)

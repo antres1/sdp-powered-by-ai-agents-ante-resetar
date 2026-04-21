@@ -132,111 +132,115 @@ SO THAT reconnection is handled server-side without requiring a new matchmaking 
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-007.1: Deploy RejoinFunction Lambda with `rejoin` route
+### GAME-INFRA-007.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.1 — Building Block View; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 8.5 — WebSocket Connection Lifecycle; Section 5.1 — Building Block View (RejoinFunction)
 
 AS A DevOps engineer
-I WANT a RejoinFunction Lambda deployed via SAM with a `rejoin` WebSocket route
-SO THAT reconnecting players have a compute target to restore their session
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Lambda deployed and invocable
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-007.1-S1
 
 **GIVEN**
-* `template.yaml` defines `RejoinFunction` with `Runtime: python3.12` and the `rejoin` route integration
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the game service source code including rejoin logic
 
 **WHEN**
-* `sam deploy` completes
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The Lambda exists and a synthetic invocation returns without a 5xx error
-* The log group `/aws/lambda/RejoinFunction` exists
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-007.2: DynamoDB — connection update and game state lookup for rejoin
+### GAME-INFRA-007.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Connection, Game)
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 8.1 — Authentication & Authorisation
 
 AS A DevOps engineer
-I WANT RejoinFunction's IAM role to allow `GetItem`, `PutItem`, and `DeleteItem` on `GameTable`
-SO THAT it can update the connection mapping and read the current game state
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the rejoin logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: Connection item updated and game state retrieved
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: GAME-INFRA-007.2-S1
 
 **GIVEN**
-* A `GAME#<gameId> / STATE` item and an old `CONN#<oldConnId> / PLAYER` item exist
-* RejoinFunction's execution role has `GetItem`, `PutItem`, `DeleteItem` on `GameTable`
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* RejoinFunction executes
+* `docker run --rm tcg-game python -c "import pytest; import domain.game"` is executed
 
 **THEN**
-* The old connection item is deleted
-* A new `CONN#<newConnId> / PLAYER` item is written
-* The game state is retrieved without `AccessDeniedException`
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### GAME-INFRA-007.3: WebSocket — rejoin route delivers event to Lambda
+### GAME-INFRA-007.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — API Gateway; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components; Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the `rejoin` WebSocket route integrated with RejoinFunction
-SO THAT reconnection frames are routed to the correct Lambda
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover rejoin test files without manual path configuration
 
-#### SCENARIO 1: `rejoin` route delivers event to Lambda
+#### SCENARIO 1: pytest collects rejoin tests without import errors
 
 **Scenario ID**: GAME-INFRA-007.3-S1
 
 **GIVEN**
-* `template.yaml` defines a `rejoin` route pointing to `RejoinFunction`
-* The stack is deployed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* A reconnected client sends `{"action": "rejoin"}`
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* API Gateway invokes `RejoinFunction` with `connectionId` and the message body
+* pytest prints a list of collected test items including rejoin tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-007.4: CloudWatch — reconnection events logged
+### GAME-INFRA-007.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.2 — Level 2 Components; Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT reconnection events to appear in structured logs
-SO THAT reconnection frequency and failures are observable
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log emitted on rejoin
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-007.4-S1
 
 **GIVEN**
-* RejoinFunction uses AWS Lambda Powertools `Logger`
-* A rejoin event is processed
+* The Docker image has been built successfully (GAME-INFRA-007.1)
+* All dependencies are installed (GAME-INFRA-007.2)
+* Test discovery succeeds (GAME-INFRA-007.3)
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry in `/aws/lambda/RejoinFunction` contains `playerId`, `gameId` (or null), `event: "rejoin"`, and `durationMs`
+* All tests pass including rejoin scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-007.2 (DynamoDB IAM for connection update + game lookup)
-  → GAME-INFRA-007.1 (RejoinFunction Lambda deploy)
-  → GAME-INFRA-007.3 (rejoin route)
-  → GAME-INFRA-007.4 (logging)
+GAME-INFRA-007.1 (Dockerfile builds)
+  → GAME-INFRA-007.2 (dependencies installed)
+  → GAME-INFRA-007.3 (pytest discovery)
+  → GAME-INFRA-007.4 (test suite passes in container)
   → GAME-BE-007.1 (rejoin handler logic)
   → GAME-FE-007.1 (auto-reconnect with backoff + game board restore)
   → GAME-STORY-007 (E2E: drop connection mid-game, reconnect, verify game state restored)

@@ -148,110 +148,115 @@ SO THAT the opponent is not notified of failed actions and game state is not cor
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-004.1: Compute — rule violation handled within PlayCardFunction (no new Lambda)
+### GAME-INFRA-004.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.1 — PlayCardFunction; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 8.2 — Error Handling
 
 AS A DevOps engineer
-I WANT to confirm that rule violation handling runs inside the existing PlayCardFunction
-SO THAT no additional compute resource is needed
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Rule violation response sent within existing Lambda invocation
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-004.1-S1
 
 **GIVEN**
-* PlayCardFunction is deployed (GAME-STORY-001)
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the game service source code including `RuleViolation`
 
 **WHEN**
-* A card play with insufficient mana is processed
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The error response is sent within the same Lambda invocation
-* The Lambda returns HTTP 200 (WebSocket frame delivered; error is in the payload)
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-004.2: DynamoDB — no write on rule violation
+### GAME-INFRA-004.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 8.4 — Game State Consistency; Section 5.3 — DynamoDB Access Patterns (Game)
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 8.2 — Error Handling
 
 AS A DevOps engineer
-I WANT to verify that a rule violation does not result in a DynamoDB write
-SO THAT game state integrity is preserved on rejected actions
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the rule-violation logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: DynamoDB item unchanged after rule violation
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: GAME-INFRA-004.2-S1
 
 **GIVEN**
-* A `GAME#<gameId> / STATE` item exists with a known state
-* A card play with insufficient mana is processed
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* PlayCardFunction completes
+* `docker run --rm tcg-game python -c "import pytest; from domain.game import play_card; from domain.models import RuleViolation"` is executed
 
 **THEN**
-* A `GetItem` on `GAME#<gameId> / STATE` returns the original unchanged state
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### GAME-INFRA-004.3: WebSocket — error delivered only to acting player
+### GAME-INFRA-004.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 8.2 — Error Handling; Section 6 — Runtime View, Scenario 2 (rule violation branch)
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT to verify that the error message is delivered only to the acting player's WebSocket connection
-SO THAT the opponent's client is not affected by the other player's rule violations
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover rule-violation test files without manual path configuration
 
-#### SCENARIO 1: Only acting player's connection receives error frame
+#### SCENARIO 1: pytest collects rule-violation tests without import errors
 
 **Scenario ID**: GAME-INFRA-004.3-S1
 
 **GIVEN**
-* Both players have active WebSocket connections
-* A rule violation occurs for player A
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* PlayCardFunction calls `postToConnection`
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* `postToConnection` is called exactly once with player A's `connectionId`
-* Player B's connection receives no frame for this action
+* pytest prints a list of collected test items including rule-violation tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-004.4: CloudWatch — rule violations logged as warnings
+### GAME-INFRA-004.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT rule violations to appear as structured warning logs in CloudWatch
-SO THAT patterns of invalid actions are observable (e.g. client bugs sending unaffordable plays)
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured warning log emitted on rule violation
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-004.4-S1
 
 **GIVEN**
-* PlayCardFunction uses AWS Lambda Powertools `Logger`
-* A `RuleViolation` is caught
+* The Docker image has been built successfully (GAME-INFRA-004.1)
+* All dependencies are installed (GAME-INFRA-004.2)
+* Test discovery succeeds (GAME-INFRA-004.3)
 
 **WHEN**
-* The handler completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry at `WARNING` level appears in `/aws/lambda/PlayCardFunction` containing `gameId`, `playerId`, `violation`, and `durationMs`
+* All tests pass including rule-violation scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-004.1 (confirm no new Lambda — reuses PlayCardFunction)
-  → GAME-INFRA-004.2 (verify no DynamoDB write on violation)
-  → GAME-INFRA-004.3 (WebSocket error delivery to acting player only)
-  → GAME-INFRA-004.4 (warning logging)
+GAME-INFRA-004.1 (Dockerfile builds)
+  → GAME-INFRA-004.2 (dependencies installed)
+  → GAME-INFRA-004.3 (pytest discovery)
+  → GAME-INFRA-004.4 (test suite passes in container)
   → GAME-BE-004.1 (RuleViolation in play_card() pure function)
   → GAME-BE-004.2 (handler catches RuleViolation, sends error to acting player only)
   → GAME-FE-004.1 (error toast + card re-enable)
