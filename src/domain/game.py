@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from domain.models import GameState
+from domain.models import GameState, RuleViolationError
 
 
 def play_card(state: GameState, card_index: int) -> GameState:
@@ -9,6 +9,9 @@ def play_card(state: GameState, card_index: int) -> GameState:
     opponent = state.players[1 - i]
 
     cost = active.hand[card_index]
+
+    if active.mana < cost:
+        raise RuleViolationError("not enough mana")
 
     new_hand = active.hand[:card_index] + active.hand[card_index + 1 :]
     new_active = replace(active, mana=active.mana - cost, hand=new_hand)

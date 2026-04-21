@@ -15,3 +15,7 @@ class Player:
 class GameState:
     players: list[Player]
     active_player_index: int
+
+
+class RuleViolationError(Exception):
+    pass
