@@ -8,6 +8,9 @@ def play_card(state: GameState, card_index: int) -> GameState:
     active = state.players[i]
     opponent = state.players[1 - i]
 
+    if card_index < 0 or card_index >= len(active.hand):
+        raise RuleViolationError("invalid card index")
+
     cost = active.hand[card_index]
 
     if active.mana < cost:
