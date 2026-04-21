@@ -36,3 +36,29 @@ def test_conn_be_001_1_s1_valid_jwt_stores_connection_record():
 
     # AND the function returns HTTP 200
     assert response["statusCode"] == 200
+
+
+def test_conn_be_001_1_s2_invalid_jwt_returns_401_without_writing():
+    # GIVEN a $connect event with an expired JWT
+    secret = "a-32-byte-test-secret-padding-xx"  # pragma: allowlist secret
+    expired_token = jwt.encode(
+        {
+            "sub": "player-42",
+            "exp": int(datetime.now(UTC).timestamp()) - 3600,
+        },
+        secret,
+        algorithm="HS256",
+    )
+    event = {
+        "requestContext": {"connectionId": "conn-xyz"},
+        "queryStringParameters": {"token": expired_token},
+    }
+    repo = InMemoryConnectionRepository()
+
+    # WHEN ConnectFunction validates the token
+    response = connect(event, repo=repo, secret=secret)
+
+    # THEN the function returns HTTP 401
+    assert response["statusCode"] == 401
+    # AND no record is written
+    assert repo.get("conn-xyz") is None

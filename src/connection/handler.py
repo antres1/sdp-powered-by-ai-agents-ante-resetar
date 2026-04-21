@@ -15,7 +15,11 @@ def connect(
     connection_id = event["requestContext"]["connectionId"]
     token = event["queryStringParameters"]["token"]
 
-    claims = jwt.decode(token, secret, algorithms=["HS256"])
+    try:
+        claims = jwt.decode(token, secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return {"statusCode": 401}
+
     player_id = claims["sub"]
 
     repo.put(
