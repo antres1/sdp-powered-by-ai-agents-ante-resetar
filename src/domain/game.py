@@ -3,10 +3,17 @@ from dataclasses import replace
 from domain.models import GameState, RuleViolationError
 
 
-def play_card(state: GameState, card_index: int) -> GameState:
+def play_card(
+    state: GameState,
+    card_index: int,
+    acting_player_id: str | None = None,
+) -> GameState:
     i = state.active_player_index
     active = state.players[i]
     opponent = state.players[1 - i]
+
+    if acting_player_id is not None and acting_player_id != active.id:
+        raise RuleViolationError("not your turn")
 
     if card_index < 0 or card_index >= len(active.hand):
         raise RuleViolationError("invalid card index")
