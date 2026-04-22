@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from domain.game import end_turn, play_card
+from domain.game import end_turn, is_game_over, play_card
 from domain.models import GameState, Player, RuleViolationError
 from matchmaking.repository import MatchmakingRepository
 
@@ -9,6 +9,14 @@ from matchmaking.repository import MatchmakingRepository
 class PlayCardResult:
     game: dict | None = None
     error: str | None = None
+    winner: str | None = None
+
+
+@dataclass(frozen=True)
+class EndTurnResult:
+    game: dict | None = None
+    error: str | None = None
+    winner: str | None = None
 
 
 def _dict_to_state(d: dict) -> GameState:
@@ -55,6 +63,8 @@ def play_card_handler(
     stored = repo.get_game(game_id)
     if stored is None:
         return PlayCardResult(error="game not found")
+    if stored.get("winner"):
+        return PlayCardResult(error="game over")
 
     state = _dict_to_state(stored)
     try:
@@ -65,14 +75,11 @@ def play_card_handler(
         return PlayCardResult(error=str(exc))
 
     new_dict = _state_to_dict(game_id, new_state, stored["player_ids"])
+    winner = is_game_over(new_state)
+    if winner is not None:
+        new_dict["winner"] = winner
     repo.save_game(game_id, new_dict)
-    return PlayCardResult(game=new_dict)
-
-
-@dataclass(frozen=True)
-class EndTurnResult:
-    game: dict | None = None
-    error: str | None = None
+    return PlayCardResult(game=new_dict, winner=winner)
 
 
 def end_turn_handler(
@@ -84,6 +91,8 @@ def end_turn_handler(
     stored = repo.get_game(game_id)
     if stored is None:
         return EndTurnResult(error="game not found")
+    if stored.get("winner"):
+        return EndTurnResult(error="game over")
 
     state = _dict_to_state(stored)
     active = state.players[state.active_player_index]
@@ -92,5 +101,8 @@ def end_turn_handler(
 
     new_state = end_turn(state)
     new_dict = _state_to_dict(game_id, new_state, stored["player_ids"])
+    winner = is_game_over(new_state)
+    if winner is not None:
+        new_dict["winner"] = winner
     repo.save_game(game_id, new_dict)
-    return EndTurnResult(game=new_dict)
+    return EndTurnResult(game=new_dict, winner=winner)

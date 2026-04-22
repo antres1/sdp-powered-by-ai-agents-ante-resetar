@@ -3,7 +3,7 @@
 ## Pareto Progress
 
 ```
-Pareto Progress: 5/5 core stories (100% of 20% core stories)
+Pareto Progress: 5/5 core stories written, 5/5 core stories implemented (BE)
 Core functionality coverage: ~80% of 80% target ✅
 Supporting stories written: 7/7 (100%)
 Total stories written: 12/12 ✅
@@ -29,7 +29,7 @@ Total stories written: 12/12 ✅
 | MATCH-STORY-001 | Player joins queue and gets matched | ✅ | DONE (BE; FE + race deferred) | [match-story-001.md](match-story-001.md) |
 | GAME-STORY-001 | Player plays a card | ✅ | DONE (BE; FE deferred) | [game-story-001.md](game-story-001.md) |
 | GAME-STORY-002 | Player ends their turn | ✅ | DONE (BE; FE deferred) | [game-story-002.md](game-story-002.md) |
-| GAME-STORY-003 | Game detects win condition | ✅ | TODO | [game-story-003.md](game-story-003.md) |
+| GAME-STORY-003 | Game detects win condition | ✅ | DONE (BE; FE deferred) | [game-story-003.md](game-story-003.md) |
 
 ### SUPPORTING Stories (80% → remaining 20% value)
 

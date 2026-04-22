@@ -63,3 +63,11 @@ def end_turn(state: GameState) -> GameState:
     new_players = list(state.players)
     new_players[1 - i] = new_opp
     return replace(state, players=new_players, active_player_index=1 - i)
+
+
+def is_game_over(state: GameState) -> str | None:
+    for p in state.players:
+        if p.hp <= 0:
+            winner = next(o for o in state.players if o.id != p.id)
+            return winner.id
+    return None
