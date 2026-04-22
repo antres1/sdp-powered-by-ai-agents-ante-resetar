@@ -126,107 +126,115 @@ SO THAT the Bleeding Out rule is unit-testable without infrastructure
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-005.1: Compute — Bleeding Out handled within EndTurnFunction (no new Lambda)
+### GAME-INFRA-005.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.1 — EndTurnFunction; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 1.1 — Game Rules (Bleeding Out)
 
 AS A DevOps engineer
-I WANT to confirm that Bleeding Out logic runs inside the existing EndTurnFunction
-SO THAT no additional compute resource is needed
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Bleeding Out damage applied within existing Lambda invocation
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-005.1-S1
 
 **GIVEN**
-* EndTurnFunction is deployed (GAME-STORY-002)
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the game service source code including Bleeding Out logic
 
 **WHEN**
-* An end-turn action is processed with an empty opponent deck
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The HP reduction and state persistence occur within the same Lambda invocation
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-005.2: DynamoDB — Bleeding Out state persisted correctly
+### GAME-INFRA-005.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Game); Section 8.4 — Game State Consistency
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 1.1 — Bleeding Out rule
 
 AS A DevOps engineer
-I WANT the post-Bleeding-Out game state to be written to DynamoDB with the correct HP value
-SO THAT the damage is durable
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the Bleeding Out logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: DynamoDB item reflects HP reduction after Bleeding Out
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: GAME-INFRA-005.2-S1
 
 **GIVEN**
-* A `GAME#<gameId> / STATE` item exists with opponent HP = 5 and empty deck
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* EndTurnFunction processes the end-turn action
+* `docker run --rm tcg-game python -c "import pytest; from domain.game import end_turn"` is executed
 
 **THEN**
-* A `GetItem` on `GAME#<gameId> / STATE` returns state with opponent HP = 4
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### GAME-INFRA-005.3: WebSocket — updated state broadcast to both players after Bleeding Out
+### GAME-INFRA-005.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 3; Section 8.5 — WebSocket Connection Lifecycle
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the post-Bleeding-Out game state delivered to both players via WebSocket
-SO THAT both clients reflect the HP change in real time
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover Bleeding Out test files without manual path configuration
 
-#### SCENARIO 1: Both players receive updated state after Bleeding Out
+#### SCENARIO 1: pytest collects Bleeding Out tests without import errors
 
 **Scenario ID**: GAME-INFRA-005.3-S1
 
 **GIVEN**
-* Both players have active WebSocket connections
-* An end-turn with Bleeding Out is processed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* EndTurnFunction calls `postToConnection` for both players
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* Both clients receive `{"gameState": {...}}` with the reduced HP within 500 ms (p95)
+* pytest prints a list of collected test items including Bleeding Out tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-005.4: CloudWatch — Bleeding Out events logged
+### GAME-INFRA-005.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT Bleeding Out events to appear in structured logs
-SO THAT they are auditable and distinguishable from normal draws
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log entry emitted on Bleeding Out
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-005.4-S1
 
 **GIVEN**
-* EndTurnFunction uses AWS Lambda Powertools `Logger`
-* A Bleeding Out event occurs
+* The Docker image has been built successfully (GAME-INFRA-005.1)
+* All dependencies are installed (GAME-INFRA-005.2)
+* Test discovery succeeds (GAME-INFRA-005.3)
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry in `/aws/lambda/EndTurnFunction` contains `gameId`, `playerId`, `event: "bleeding_out"`, `hpAfter`, and `durationMs`
+* All tests pass including Bleeding Out scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-005.1 (confirm no new Lambda — reuses EndTurnFunction)
-  → GAME-INFRA-005.2 (DynamoDB HP persistence)
-  → GAME-INFRA-005.3 (WebSocket broadcast)
-  → GAME-INFRA-005.4 (logging)
+GAME-INFRA-005.1 (Dockerfile builds)
+  → GAME-INFRA-005.2 (dependencies installed)
+  → GAME-INFRA-005.3 (pytest discovery)
+  → GAME-INFRA-005.4 (test suite passes in container)
   → GAME-BE-005.1 (Bleeding Out in end_turn() pure function)
   → GAME-FE-005.1 (Bleeding Out UI indicator)
   → GAME-STORY-005 (E2E: end turn with empty deck → opponent HP reduced, both players notified)

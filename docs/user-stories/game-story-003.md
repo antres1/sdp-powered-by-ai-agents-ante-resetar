@@ -157,120 +157,115 @@ SO THAT the game ends immediately when the win condition is met
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-003.1: Lambda compute — no new Lambda required
+### GAME-INFRA-003.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.1 — PlayCardFunction, EndTurnFunction (win condition is handled within existing Lambdas)
+**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
-I WANT to confirm that win condition detection runs inside the existing PlayCardFunction and EndTurnFunction Lambdas
-SO THAT no additional compute resource is needed for this story
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Win condition check executes within existing Lambda invocation
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-003.1-S1
 
 **GIVEN**
-* PlayCardFunction and EndTurnFunction are deployed (GAME-STORY-001, GAME-STORY-002)
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the game service source code including `is_game_over` logic
 
 **WHEN**
-* A lethal action is processed
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The `game_over` message is sent within the same Lambda invocation, before the function returns
-* No additional Lambda function is invoked
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-003.2: DynamoDB — final game state persisted on game over
+### GAME-INFRA-003.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Game); Section 8.4 — Game State Consistency
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 8.4 — Game State Consistency
 
 AS A DevOps engineer
-I WANT the final game state (with the losing player at ≤ 0 HP) to be written to DynamoDB before the game_over message is sent
-SO THAT the outcome is durable and auditable
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the win-condition logic and its test suite can import every required package without errors
 
-#### SCENARIO 1: Final state item exists in DynamoDB after game over
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: GAME-INFRA-003.2-S1
 
 **GIVEN**
-* A lethal card play or Bleeding Out event occurs
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game python -c "import pytest; from domain.game import is_game_over"` is executed
 
 **THEN**
-* A `GetItem` on `GAME#<gameId> / STATE` returns the final state with the losing player's HP ≤ 0
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### GAME-INFRA-003.3: WebSocket delivery of game_over to both connections
+### GAME-INFRA-003.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 6 — Runtime View (game_over branch); Section 8.5 — WebSocket Connection Lifecycle
+**Architecture Reference**: Section 5.2 — Game Rules (win condition); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the `game_over` message delivered to both players' WebSocket connections via the Management API
-SO THAT both players receive the outcome in real time
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover win-condition test files without manual path configuration
 
-#### SCENARIO 1: game_over message delivered to both connections
+#### SCENARIO 1: pytest collects win-condition tests without import errors
 
 **Scenario ID**: GAME-INFRA-003.3-S1
 
 **GIVEN**
-* Both players have active WebSocket connections
-* A lethal action is processed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* The Lambda calls `postToConnection` for both `connectionId`s with the `game_over` payload
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* Both clients receive the `game_over` message within 500 ms of the action (p95 per Section 10.1)
+* pytest prints a list of collected test items including win-condition tests
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-003.4: CloudWatch — game_over events logged and observable
+### GAME-INFRA-003.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT game over events to appear in structured logs
-SO THAT game outcomes are auditable and anomalies (e.g. no game_over ever sent) are detectable
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: game_over event logged with winner and gameId
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-003.4-S1
 
 **GIVEN**
-* A game ends (win condition met)
+* The Docker image has been built successfully (GAME-INFRA-003.1)
+* All dependencies are installed (GAME-INFRA-003.2)
+* Test discovery succeeds (GAME-INFRA-003.3)
 
 **WHEN**
-* The Lambda completes
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry in CloudWatch contains `gameId`, `winnerId`, `action: "game_over"`, and `durationMs`
-
-#### SCENARIO 2: CloudWatch alarm triggers on Lambda errors during game-over processing
-
-**Scenario ID**: GAME-INFRA-003.4-S2
-
-**GIVEN**
-* A CloudWatch alarm is defined on the `Errors` metric for `PlayCardFunction` or `EndTurnFunction` with threshold ≥ 1 over 1 minute
-
-**WHEN**
-* An unhandled exception occurs while processing a lethal action
-
-**THEN**
-* The alarm transitions to `ALARM` state within 60 seconds
+* All tests pass including win-condition scenarios
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-003.2 (verify DynamoDB final state persistence — reuses existing table)
-  → GAME-INFRA-003.1 (confirm no new Lambda needed)
-  → GAME-INFRA-003.3 (WebSocket game_over delivery — reuses existing API GW)
-  → GAME-INFRA-003.4 (logging)
+GAME-INFRA-003.1 (Dockerfile builds)
+  → GAME-INFRA-003.2 (dependencies installed)
+  → GAME-INFRA-003.3 (pytest discovery)
+  → GAME-INFRA-003.4 (test suite passes in container)
   → GAME-BE-003.1 (is_game_over() pure domain function)
   → GAME-BE-003.2 (wire is_game_over() into PlayCardFunction + EndTurnFunction handlers)
   → GAME-FE-003.1 (game over screen)

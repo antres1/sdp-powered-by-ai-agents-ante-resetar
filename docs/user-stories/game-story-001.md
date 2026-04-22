@@ -201,134 +201,115 @@ SO THAT all rule logic is unit-testable without infrastructure
 
 ## Infrastructure Sub-Stories
 
-### GAME-INFRA-001.1: Deploy PlayCardFunction Lambda
+### GAME-INFRA-001.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 7.2 — Infrastructure as Code (PlayCardFunction)
+**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
-I WANT PlayCardFunction deployed via SAM with the `playCard` route integration
-SO THAT card-play WebSocket frames have a compute target
+I WANT the game service Dockerfile to build without errors
+SO THAT the container image is available for local development and test execution
 
-#### SCENARIO 1: Lambda deployed and invocable
+#### SCENARIO 1: Docker image builds from project root
 
 **Scenario ID**: GAME-INFRA-001.1-S1
 
 **GIVEN**
-* `template.yaml` defines `PlayCardFunction` with `Runtime: python3.12` and the `playCard` route
+* A `Dockerfile` exists at the project root targeting Python 3.12
+* The `src/` directory contains the game service source code
 
 **WHEN**
-* `sam deploy` completes
+* `docker build -t tcg-game .` is executed
 
 **THEN**
-* The Lambda exists and a synthetic invocation returns without a 5xx error
-* The log group `/aws/lambda/PlayCardFunction` exists
+* The build completes with exit code 0
+* `docker images tcg-game` lists the image
 
 ---
 
-### GAME-INFRA-001.2: DynamoDB game state read/write access for PlayCardFunction
+### GAME-INFRA-001.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.3 — DynamoDB Access Patterns (Game); Section 8.4 — Game State Consistency
+**Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 8.4 — Game State Consistency
 
 AS A DevOps engineer
-I WANT PlayCardFunction's IAM role to allow `GetItem` and `PutItem` on `GameTable`
-SO THAT the Lambda can load and persist game state
+I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
+SO THAT the game service and its test suite can import every required package without errors
 
-#### SCENARIO 1: Conditional PutItem succeeds on existing game item
+#### SCENARIO 1: All declared packages are importable inside the container
 
 **Scenario ID**: GAME-INFRA-001.2-S1
 
 **GIVEN**
-* A `GAME#<gameId> / STATE` item exists in `GameTable`
+* `requirements.txt` lists all runtime and test dependencies with pinned versions
+* The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
-* A conditional `PutItem` with `attribute_exists(PK)` is issued
+* `docker run --rm tcg-game python -c "import pytest; import domain.game"` is executed
 
 **THEN**
-* The write succeeds and the item is updated
-
-#### SCENARIO 2: Conditional PutItem fails on missing game item
-
-**Scenario ID**: GAME-INFRA-001.2-S2
-
-**GIVEN**
-* No item exists for `GAME#<unknownId> / STATE`
-
-**WHEN**
-* A conditional `PutItem` with `attribute_exists(PK)` is issued
-
-**THEN**
-* DynamoDB returns `ConditionalCheckFailedException`
+* The command exits with code 0
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
-### GAME-INFRA-001.3: Wire `playCard` route on WebSocket API Gateway
+### GAME-INFRA-001.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — API Gateway; Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (Game Rules); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
-I WANT the `playCard` WebSocket route integrated with PlayCardFunction
-SO THAT card-play frames are routed to the correct Lambda
+I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
+SO THAT `pytest` can discover all test files without manual path configuration
 
-#### SCENARIO 1: `playCard` route delivers event to Lambda
+#### SCENARIO 1: pytest collects tests without import errors
 
 **Scenario ID**: GAME-INFRA-001.3-S1
 
 **GIVEN**
-* `template.yaml` defines a `playCard` route pointing to `PlayCardFunction`
-* The stack is deployed
+* Test files reside under `tests/` and are named `test_*.py`
+* A `conftest.py` or `pyproject.toml` sets the `pythonpath` to `src/`
 
 **WHEN**
-* A connected client sends `{"action": "playCard", "cardIndex": 0}`
+* `docker run --rm tcg-game pytest --collect-only` is executed
 
 **THEN**
-* API Gateway invokes `PlayCardFunction` with `connectionId` and the message body
+* pytest prints a list of collected test items
+* Exit code is 0 and no `ImportError` appears in the output
 
 ---
 
-### GAME-INFRA-001.4: CloudWatch alarm and structured logging for PlayCardFunction
+### GAME-INFRA-001.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 8.3 — Logging & Observability; Section 10.2 — Responsiveness (≤ 300 ms p95)
+**Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
-I WANT PlayCardFunction to emit structured logs and have a CloudWatch error alarm
-SO THAT card-play failures are observable and latency can be tracked against the 300 ms p95 target
+I WANT the full pytest suite to run and pass inside the Docker container
+SO THAT the container image is verified as correct before any deployment step
 
-#### SCENARIO 1: Structured log emitted on every invocation
+#### SCENARIO 1: pytest exits with code 0 inside the container
 
 **Scenario ID**: GAME-INFRA-001.4-S1
 
 **GIVEN**
-* PlayCardFunction uses AWS Lambda Powertools `Logger` and `Tracer`
+* The Docker image has been built successfully (GAME-INFRA-001.1)
+* All dependencies are installed (GAME-INFRA-001.2)
+* Test discovery succeeds (GAME-INFRA-001.3)
 
 **WHEN**
-* A card play is processed (success or rule violation)
+* `docker run --rm tcg-game pytest` is executed
 
 **THEN**
-* A JSON log entry appears in `/aws/lambda/PlayCardFunction` containing `gameId`, `playerId`, `action`, and `durationMs`
-* An X-Ray trace links API Gateway → Lambda → DynamoDB
-
-#### SCENARIO 2: CloudWatch alarm triggers on Lambda errors
-
-**Scenario ID**: GAME-INFRA-001.4-S2
-
-**GIVEN**
-* A CloudWatch alarm is defined on `Errors` metric for `PlayCardFunction` with threshold ≥ 1 over 1 minute
-
-**WHEN**
-* PlayCardFunction throws an unhandled exception
-
-**THEN**
-* The alarm transitions to `ALARM` state within 60 seconds
+* All tests pass
+* The process exits with code 0
+* Test output is visible in the container's stdout log
 
 ---
 
 ## Implementation Order
 
 ```
-GAME-INFRA-001.1 (Lambda deploy)
-  → GAME-INFRA-001.2 (DynamoDB IAM + conditional write)
-  → GAME-INFRA-001.3 (playCard route)
-  → GAME-INFRA-001.4 (monitoring)
+GAME-INFRA-001.1 (Dockerfile builds)
+  → GAME-INFRA-001.2 (dependencies installed)
+  → GAME-INFRA-001.3 (pytest discovery)
+  → GAME-INFRA-001.4 (test suite passes in container)
   → GAME-BE-001.2 (play_card() pure domain function)
   → GAME-BE-001.1 (PlayCardFunction handler + use case)
   → GAME-FE-001.1 (game board hand rendering + interaction)
