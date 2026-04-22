@@ -7,6 +7,10 @@ from connection.repository import Connection, ConnectionRepository
 CONNECTION_TTL_SECONDS = 24 * 60 * 60
 
 
+class ConnectRejectedError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class ConnectResult:
     accepted: bool
@@ -21,7 +25,11 @@ def connect(
     repo: ConnectionRepository,
     now_epoch: int,
 ) -> ConnectResult:
-    claims = jwt.decode(token, secret, algorithms=["HS256"])
+    try:
+        claims = jwt.decode(token, secret, algorithms=["HS256"])
+    except jwt.InvalidTokenError as exc:
+        raise ConnectRejectedError(str(exc)) from exc
+
     player_id = claims["sub"]
     repo.put(
         Connection(
