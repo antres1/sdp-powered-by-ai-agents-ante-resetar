@@ -25,7 +25,7 @@ SO THAT the game rules are enforced and only the acting player sees the error
 * The player sends `{"action": "playCard", "cardIndex": 0}`
 
 **THEN**
-* The game state is unchanged (no DynamoDB write)
+* The game state is unchanged (no SQLite write)
 * Only the acting player receives `{"error": "not enough mana"}`
 * The opponent receives nothing
 
@@ -121,12 +121,12 @@ SO THAT rule enforcement is unit-testable without infrastructure
 **THEN**
 * `RuleViolation("invalid card index")` is raised
 
-### GAME-BE-004.2: PlayCardFunction handler catches RuleViolation and sends error to acting player only
+### GAME-BE-004.2: play_card handler catches RuleViolation and sends error to acting player only
 
-**Architecture Reference**: Section 8.2 — Error Handling; Section 5.2 — Lambda Handler (adapter/in)
+**Architecture Reference**: Section 8.2 — Error Handling; Section 5.2 — WebSocket Router (adapter/in)
 
 AS A system
-I WANT PlayCardFunction to catch `RuleViolation` and send the error message only to the acting player
+I WANT the `play_card` handler to catch `RuleViolation` and send the error message only to the acting player
 SO THAT the opponent is not notified of failed actions and game state is not corrupted
 
 #### SCENARIO 1: RuleViolation caught — error sent to acting player, no state write
@@ -150,7 +150,7 @@ SO THAT the opponent is not notified of failed actions and game state is not cor
 
 ### GAME-INFRA-004.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 8.2 — Error Handling
+**Architecture Reference**: Section 5.2 — Level 2 Components (action handlers); Section 8.2 — Error Handling
 
 AS A DevOps engineer
 I WANT the game service Dockerfile to build without errors

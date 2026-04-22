@@ -118,12 +118,12 @@ SO THAT the win condition is unit-testable without infrastructure
 **THEN**
 * Returns `None`
 
-### GAME-BE-003.2: PlayCardFunction and EndTurnFunction broadcast game_over
+### GAME-BE-003.2: play_card and end_turn handlers broadcast game_over
 
 **Architecture Reference**: Section 6 — Runtime View, Scenario 2 and 3 (game_over branch)
 
 AS A system
-I WANT PlayCardFunction and EndTurnFunction to check `is_game_over()` after every state change and broadcast the result
+I WANT the `play_card` and `end_turn` handlers to check `is_game_over()` after every state change and broadcast the result
 SO THAT the game ends immediately when the win condition is met
 
 #### SCENARIO 1: game_over broadcast after lethal card play
@@ -159,7 +159,7 @@ SO THAT the game ends immediately when the win condition is met
 
 ### GAME-INFRA-003.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (action handlers); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
 I WANT the game service Dockerfile to build without errors
@@ -267,7 +267,7 @@ GAME-INFRA-003.1 (Dockerfile builds)
   → GAME-INFRA-003.3 (pytest discovery)
   → GAME-INFRA-003.4 (test suite passes in container)
   → GAME-BE-003.1 (is_game_over() pure domain function)
-  → GAME-BE-003.2 (wire is_game_over() into PlayCardFunction + EndTurnFunction handlers)
+  → GAME-BE-003.2 (wire is_game_over() into the play_card + end_turn handlers)
   → GAME-FE-003.1 (game over screen)
   → GAME-STORY-003 (E2E: lethal card play → both players receive game_over)
 ```

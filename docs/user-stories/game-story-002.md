@@ -1,6 +1,6 @@
 # GAME-STORY-002: Player Ends Their Turn
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 3 (End Turn); Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 1.1 — Game Rules (Bleeding Out, Overload, mana slots)
+**Architecture Reference**: Section 6 — Runtime View, Scenario 3 (End Turn); Section 5.2 — Level 2 Components (action handlers); Section 1.1 — Game Rules (Bleeding Out, Overload, mana slots)
 **Priority**: CORE
 **Status**: TODO
 
@@ -121,12 +121,12 @@ SO THAT I know when I can act and can pass control to my opponent
 
 ## Backend Sub-Stories
 
-### GAME-BE-002.1: EndTurnFunction orchestrates turn transition
+### GAME-BE-002.1: end_turn handler orchestrates turn transition
 
 **Architecture Reference**: Section 5.2 — Game Use Case; Section 8.4 — Game State Consistency
 
 AS A system
-I WANT EndTurnFunction to load game state, call `end_turn()`, persist the result, and notify both players
+I WANT the `end_turn` handler to load game state, call the domain `end_turn()` function, persist the result, and notify both players
 SO THAT turn transitions are atomic and immediately visible to both players
 
 #### SCENARIO 1: Valid end turn — state persisted and both players notified
@@ -138,7 +138,7 @@ SO THAT turn transitions are atomic and immediately visible to both players
 * `GameRepository.get_game()` returns a valid `GameState`
 
 **WHEN**
-* EndTurnFunction is invoked
+* the end_turn handler is invoked
 
 **THEN**
 * `end_turn(state)` is called and returns a new `GameState`
@@ -153,12 +153,12 @@ SO THAT turn transitions are atomic and immediately visible to both players
 * The `connectionId` maps to the inactive player
 
 **WHEN**
-* EndTurnFunction is invoked
+* the end_turn handler is invoked
 
 **THEN**
 * `end_turn()` is never called
 * Only the acting player receives `{"error": "not your turn"}`
-* No DynamoDB write occurs
+* No SQLite write occurs
 
 ### GAME-BE-002.2: `end_turn()` pure domain function
 
@@ -234,7 +234,7 @@ SO THAT Bleeding Out, Overload, mana slot increment, and active player switch ar
 
 ### GAME-INFRA-002.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (action handlers); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
 I WANT the game service Dockerfile to build without errors
@@ -342,7 +342,7 @@ GAME-INFRA-002.1 (Dockerfile builds)
   → GAME-INFRA-002.3 (pytest discovery)
   → GAME-INFRA-002.4 (test suite passes in container)
   → GAME-BE-002.2 (end_turn() pure domain function)
-  → GAME-BE-002.1 (EndTurnFunction handler + use case)
+  → GAME-BE-002.1 (the end_turn handler handler + use case)
   → GAME-FE-002.1 (End Turn button + turn indicator)
   → GAME-STORY-002 (E2E: end turn, verify mana/draw/switch and both players notified)
 ```

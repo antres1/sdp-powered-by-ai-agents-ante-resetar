@@ -4,40 +4,51 @@ See [`diagrams/deployment.svg`](diagrams/deployment.svg).
 
 ## 7.1 Infrastructure Overview
 
-All resources live in a single AWS region (`eu-central-1`). There are no servers
-to manage — every compute unit is a Lambda function invoked on demand.
+The system runs as a single Docker container on the developer's local machine.
+There are no managed cloud services.
 
-| Layer | Service | Notes |
-|-------|---------|-------|
-| Client | Browser | Static files served from S3 + CloudFront (or local dev server) |
-| API | API Gateway WebSocket | Single stage (`prod`); routes map 1-to-1 to Lambdas |
-| Auth | Cognito User Pool | JWT validated on `$connect`; no per-request auth overhead |
-| Compute | AWS Lambda (×5) | Python 3.12, 128 MB memory, default 3s timeout |
-| Storage | DynamoDB on-demand | Single table; TTL on connection items (24 h) |
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Client | Browser | Static files served from the host (e.g. `python -m http.server`) |
+| API | WebSocket server (inside the container) | Exposed via `docker run -p 8000:8000` |
+| Auth | PyJWT with a pre-shared signing key | Key injected via env var `JWT_SECRET` |
+| Compute | Python 3.12 process in one container | Handles all actions via internal routing |
+| Storage | SQLite database file | Persisted to `/data/tcg.db` on a Docker volume |
 
 ## 7.2 Infrastructure as Code
 
-All resources are defined in a SAM template (`template.yaml`):
+All infrastructure lives in the `Dockerfile`:
 
 ```
-template.yaml
-├── WebSocketApi          (AWS::ApiGatewayV2::Api)
-├── ConnectFunction       (AWS::Serverless::Function)
-├── DisconnectFunction    (AWS::Serverless::Function)
-├── MatchmakingFunction   (AWS::Serverless::Function)
-├── PlayCardFunction      (AWS::Serverless::Function)
-├── EndTurnFunction       (AWS::Serverless::Function)
-├── GameTable             (AWS::DynamoDB::Table)
-└── CognitoUserPool       (AWS::Cognito::UserPool)
+Dockerfile
+├── FROM python:3.12-slim
+├── WORKDIR /app
+├── COPY requirements.txt . && pip install
+├── COPY src/ src/
+├── COPY tests/ tests/
+├── EXPOSE 8000
+└── CMD ["python", "-m", "src.main"]
+```
+
+An optional `docker-compose.yml` wires the host port and the volume mount:
+
+```yaml
+services:
+  tcg:
+    build: .
+    ports: ["8000:8000"]
+    volumes: ["tcg-data:/data"]
+volumes:
+  tcg-data:
 ```
 
 ## 7.3 Deployment Pipeline
 
 ```
 git push → CI (GitHub Actions)
-  → pytest (unit + integration)
-  → sam build
-  → sam deploy --stack-name tcg-prod
+  → docker build -t tcg-tests .
+  → docker run --rm tcg-tests pytest
 ```
 
-No manual steps; the pipeline is the only path to production.
+Locally, the same two commands build and test the image. No cloud deployment
+step exists for the kata.

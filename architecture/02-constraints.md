@@ -5,19 +5,19 @@
 | ID | Constraint | Reason |
 |----|-----------|--------|
 | TC-1 | Runtime: **Python 3.12** | Project tooling (Black, Ruff, isort, Bandit, pytest) is Python-based |
-| TC-2 | Compute: **AWS Lambda** | Serverless-first principle; no self-hosted servers |
-| TC-3 | API: **AWS API Gateway WebSocket** | Real-time push to both players without polling (ADR-003) |
-| TC-4 | Database: **DynamoDB single-table** | Scales to zero, known access patterns (ADR-002) |
-| TC-5 | Auth: **AWS Cognito** | Managed identity; JWT validation at the API layer |
-| TC-6 | IaC: **AWS SAM / CloudFormation** | All resources defined in code; no manual console changes |
+| TC-2 | Deployment: **single Docker container** (`docker build` + `docker run`) | Module 6 target; no managed cloud services |
+| TC-3 | API: **WebSocket server inside the container**, exposed on a host port | Real-time push to both players without polling (ADR-003) |
+| TC-4 | Storage: **SQLite on a Docker volume** | File-based, zero-configuration, persists across container restarts (ADR-002) |
+| TC-5 | Auth: **JWT signed with a pre-shared key**, validated in-process with PyJWT | No external identity provider needed for the kata |
+| TC-6 | IaC: **Dockerfile** (+ optional `docker-compose.yml`) | All build and run steps captured in code; no manual setup |
 
 ## 2.2 Organisational Constraints
 
 | ID | Constraint | Reason |
 |----|-----------|--------|
-| OC-1 | Domain logic must be **infrastructure-free** | Enables fast unit tests without mocking AWS SDKs |
-| OC-2 | One Lambda per action/event type | Single-responsibility principle; avoids monolithic handlers |
-| OC-3 | No manual AWS console changes | Reproducibility and auditability of infrastructure |
+| OC-1 | Domain logic must be **infrastructure-free** | Enables fast unit tests with no I/O |
+| OC-2 | One handler function per action/event type inside the service | Single-responsibility principle; avoids monolithic dispatch |
+| OC-3 | Tests run inside the container via `pytest` | CI and local runs use the same environment |
 
 ## 2.3 Conventions
 

@@ -131,7 +131,7 @@ SO THAT the Overload rule is unit-testable without infrastructure
 
 ### GAME-INFRA-006.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 1.1 — Game Rules (Overload)
+**Architecture Reference**: Section 5.2 — Level 2 Components (action handlers); Section 1.1 — Game Rules (Overload)
 
 AS A DevOps engineer
 I WANT the game service Dockerfile to build without errors

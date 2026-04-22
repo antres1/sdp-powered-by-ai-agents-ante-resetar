@@ -1,6 +1,6 @@
 # GAME-STORY-007: Reconnect Restores In-Progress Game Session
 
-**Architecture Reference**: Section 8.5 — WebSocket Connection Lifecycle; Section 8.1 — Authentication & Authorisation; Section 5.3 — DynamoDB Access Patterns (Connection, Game); Section 9 — ADR-003 (reconnection logic needed in client)
+**Architecture Reference**: Section 8.5 — WebSocket Connection Lifecycle; Section 8.1 — Authentication & Authorisation; Section 5.3 — SQLite Schema (`connections`, `games`); Section 9 — ADR-003 (reconnection logic needed in client)
 **Priority**: SUPPORTING
 **Status**: TODO
 
@@ -17,7 +17,7 @@ SO THAT a temporary network interruption does not forfeit my game
 **Scenario ID**: GAME-STORY-007-S1
 
 **GIVEN**
-* A game is in progress with `GAME#<gameId> / STATE` in DynamoDB
+* A game is in progress with a row for `game_id` in the `games` table
 * The player's previous WebSocket connection has dropped
 * The player reconnects with a valid JWT
 
@@ -25,7 +25,7 @@ SO THAT a temporary network interruption does not forfeit my game
 * The player opens a new WebSocket connection and sends `{"action": "joinQueue"}` or a dedicated `{"action": "rejoin"}`
 
 **THEN**
-* The new `connectionId` is stored in DynamoDB, replacing the old one
+* The new `connectionId` is stored in the `connections` table, replacing the old one
 * The player receives `{"status": "rejoined", "gameState": {...}}` with the current game state
 * The opponent is notified that the player has reconnected
 
@@ -35,7 +35,7 @@ SO THAT a temporary network interruption does not forfeit my game
 
 **GIVEN**
 * A player reconnects with a valid JWT
-* No active game exists for this player in DynamoDB
+* No row exists in the `games` table for this player
 
 **WHEN**
 * The player sends `{"action": "rejoin"}`
@@ -88,9 +88,9 @@ SO THAT brief network interruptions are transparent
 
 ## Backend Sub-Stories
 
-### GAME-BE-007.1: RejoinFunction looks up active game and sends current state
+### GAME-BE-007.1: rejoin handler looks up active game and sends current state
 
-**Architecture Reference**: Section 5.1 — ConnectFunction (extended); Section 8.1 — Authentication & Authorisation; Section 5.3 — DynamoDB Access Patterns
+**Architecture Reference**: Section 5.2 — Components (connect handler, extended); Section 8.1 — Authentication & Authorisation; Section 5.3 — SQLite Schema
 
 AS A system
 I WANT a `rejoin` handler to update the connection mapping and return the current game state to the reconnecting player
@@ -101,16 +101,16 @@ SO THAT reconnection is handled server-side without requiring a new matchmaking 
 **Scenario ID**: GAME-BE-007.1-S1
 
 **GIVEN**
-* A `GAME#<gameId> / STATE` item exists where `player.id == playerId`
+* A row in the `games` table exists where `state_json` references `playerId`
 * The player reconnects with a new `connectionId`
 
 **WHEN**
 * The `rejoin` handler is invoked
 
 **THEN**
-* The `CONN#<newConnectionId> / PLAYER` item is written (new mapping)
-* The old `CONN#<oldConnectionId> / PLAYER` item is deleted
-* The game state item is updated with the new `connectionId` for this player
+* A new row `(new_connectionId, player_id)` is inserted into the `connections` table
+* The old row for `old_connectionId` is deleted from the `connections` table
+* The game row is updated with the new `connectionId` for this player
 * The player receives `{"status": "rejoined", "gameState": {...}}`
 * The opponent receives `{"status": "opponent_reconnected"}`
 
@@ -119,14 +119,14 @@ SO THAT reconnection is handled server-side without requiring a new matchmaking 
 **Scenario ID**: GAME-BE-007.1-S2
 
 **GIVEN**
-* No game item exists for the reconnecting player
+* No row in the `games` table references the reconnecting player
 
 **WHEN**
 * The `rejoin` handler is invoked
 
 **THEN**
 * The player receives `{"status": "no_active_game"}`
-* No game item is written or modified
+* No row in the `games` table is written or modified
 
 ---
 
@@ -134,7 +134,7 @@ SO THAT reconnection is handled server-side without requiring a new matchmaking 
 
 ### GAME-INFRA-007.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 8.5 — WebSocket Connection Lifecycle; Section 5.1 — Building Block View (RejoinFunction)
+**Architecture Reference**: Section 8.5 — WebSocket Connection Lifecycle; Section 5.2 — Components (rejoin handler)
 
 AS A DevOps engineer
 I WANT the game service Dockerfile to build without errors
