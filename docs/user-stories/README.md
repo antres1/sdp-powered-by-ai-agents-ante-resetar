@@ -27,7 +27,7 @@ Total stories written: 12/12 ✅
 |----------|-------|---------|-------------|------|
 | CONN-STORY-001 | Player connects via WebSocket with JWT auth | ✅ | DONE (BE; FE deferred) | [conn-story-001.md](conn-story-001.md) |
 | MATCH-STORY-001 | Player joins queue and gets matched | ✅ | DONE (BE; FE + race deferred) | [match-story-001.md](match-story-001.md) |
-| GAME-STORY-001 | Player plays a card | ✅ | TODO | [game-story-001.md](game-story-001.md) |
+| GAME-STORY-001 | Player plays a card | ✅ | DONE (BE; FE deferred) | [game-story-001.md](game-story-001.md) |
 | GAME-STORY-002 | Player ends their turn | ✅ | TODO | [game-story-002.md](game-story-002.md) |
 | GAME-STORY-003 | Game detects win condition | ✅ | TODO | [game-story-003.md](game-story-003.md) |
 
