@@ -26,11 +26,13 @@ def test_match_be_001_1_s1_second_player_triggers_match(repo):
     assert result.status == "matched"
     assert result.game is not None
     assert set(result.game["player_ids"]) == {"player-A", "player-B"}
-    # initial state: 30 HP, 0 mana, active player is one of them
+    # initial state: both at 30 HP; first player's opening turn is already begun
+    # (1 mana slot refilled); second player starts with 0
     for p in result.game["players"]:
         assert p["hp"] == 30
-        assert p["mana"] == 0
-        assert p["mana_slots"] == 0
+    first, second = result.game["players"]
+    assert (first["mana"], first["mana_slots"]) == (1, 1)
+    assert (second["mana"], second["mana_slots"]) == (0, 0)
 
     # AND the queue is empty
     assert repo.peek_waiting() is None
