@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from domain.game import play_card
+from domain.game import end_turn, play_card
 from domain.models import GameState, Player, RuleViolationError
 from matchmaking.repository import MatchmakingRepository
 
@@ -67,3 +67,30 @@ def play_card_handler(
     new_dict = _state_to_dict(game_id, new_state, stored["player_ids"])
     repo.save_game(game_id, new_dict)
     return PlayCardResult(game=new_dict)
+
+
+@dataclass(frozen=True)
+class EndTurnResult:
+    game: dict | None = None
+    error: str | None = None
+
+
+def end_turn_handler(
+    *,
+    game_id: str,
+    acting_player_id: str,
+    repo: MatchmakingRepository,
+) -> EndTurnResult:
+    stored = repo.get_game(game_id)
+    if stored is None:
+        return EndTurnResult(error="game not found")
+
+    state = _dict_to_state(stored)
+    active = state.players[state.active_player_index]
+    if acting_player_id != active.id:
+        return EndTurnResult(error="not your turn")
+
+    new_state = end_turn(state)
+    new_dict = _state_to_dict(game_id, new_state, stored["player_ids"])
+    repo.save_game(game_id, new_dict)
+    return EndTurnResult(game=new_dict)
