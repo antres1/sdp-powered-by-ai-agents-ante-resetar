@@ -1,6 +1,6 @@
 # GAME-STORY-001: Player Plays a Card
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 2 (Play Card); Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 8.2 — Error Handling; Section 8.4 — Game State Consistency
+**Architecture Reference**: Section 6 — Runtime View, Scenario 2 (Play Card); Section 5.2 — Level 2 Components (action handlers); Section 8.2 — Error Handling; Section 8.4 — Game State Consistency
 **Priority**: CORE
 **Status**: TODO
 
@@ -43,7 +43,7 @@ SO THAT the card's mana cost is deducted, the opponent takes damage equal to the
 * The player sends `{"action": "playCard", "cardIndex": 0}`
 
 **THEN**
-* The game state is unchanged (no DynamoDB write)
+* The game state is unchanged (no SQLite write)
 * Only the acting player receives `{"error": "not enough mana"}`
 * The opponent receives nothing
 
@@ -120,12 +120,12 @@ SO THAT I can take actions during my turn
 
 ## Backend Sub-Stories
 
-### GAME-BE-001.1: PlayCardFunction applies card-play domain logic
+### GAME-BE-001.1: the play_card handler applies card-play domain logic
 
 **Architecture Reference**: Section 5.2 — Game Use Case, Game Rules, GameRepository, PlayerNotifier
 
 AS A system
-I WANT PlayCardFunction to load game state, delegate to the domain `play_card()` pure function, persist the result, and notify both players
+I WANT the play_card handler to load game state, delegate to the domain `play_card()` pure function, persist the result, and notify both players
 SO THAT card plays are rule-enforced, atomic, and immediately visible to both players
 
 #### SCENARIO 1: Valid play — state persisted and both players notified
@@ -167,19 +167,19 @@ SO THAT card plays are rule-enforced, atomic, and immediately visible to both pl
 * The `connectionId` maps to a player who is NOT the active player in the loaded `GameState`
 
 **WHEN**
-* PlayCardFunction is invoked
+* the play_card handler is invoked
 
 **THEN**
 * The domain `play_card()` is never called
 * Only the acting player receives `{"error": "not your turn"}`
-* No DynamoDB write occurs
+* No SQLite write occurs
 
 ### GAME-BE-001.2: `play_card()` pure domain function
 
 **Architecture Reference**: Section 5.2 — Game Rules (pure functions); Section 4.2 — Hexagonal Architecture
 
 AS A developer
-I WANT a pure `play_card(state, card_index)` function with no AWS imports
+I WANT a pure `play_card(state, card_index)` function with no infrastructure imports
 SO THAT all rule logic is unit-testable without infrastructure
 
 #### SCENARIO 1: Card removed, mana deducted, opponent damaged
@@ -203,7 +203,7 @@ SO THAT all rule logic is unit-testable without infrastructure
 
 ### GAME-INFRA-001.1: Dockerfile builds successfully for the game service
 
-**Architecture Reference**: Section 5.2 — Level 2 Components (Game Engine Lambdas); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Level 2 Components (action handlers); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
 I WANT the game service Dockerfile to build without errors
@@ -311,7 +311,7 @@ GAME-INFRA-001.1 (Dockerfile builds)
   → GAME-INFRA-001.3 (pytest discovery)
   → GAME-INFRA-001.4 (test suite passes in container)
   → GAME-BE-001.2 (play_card() pure domain function)
-  → GAME-BE-001.1 (PlayCardFunction handler + use case)
+  → GAME-BE-001.1 (the play_card handler handler + use case)
   → GAME-FE-001.1 (game board hand rendering + interaction)
   → GAME-STORY-001 (E2E: play card, verify state update and both players notified)
 ```

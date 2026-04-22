@@ -2,10 +2,10 @@
 
 ## 8.1 Authentication & Authorisation
 
-- Authentication happens **once** — on WebSocket `$connect`.
-- `ConnectFunction` extracts the JWT from the query string, calls Cognito to validate it, and stores `connectionId → playerId` in DynamoDB.
-- All subsequent Lambda invocations trust the `connectionId` already stored; no repeated token validation.
-- Game-action Lambdas verify the acting player is the **active player** in the loaded `GameState` before applying any action.
+- Authentication happens **once** — on WebSocket connect.
+- The `connect` handler extracts the JWT from the query string, validates its signature locally with PyJWT using `JWT_SECRET`, and stores `connectionId → playerId` in SQLite.
+- All subsequent actions trust the `connectionId` already stored; no repeated token validation.
+- Action handlers verify the acting player is the **active player** in the loaded `GameState` before applying any action.
 
 ## 8.2 Error Handling
 
@@ -14,24 +14,24 @@
 | Rule violation (e.g. not enough mana) | Domain raises `RuleViolation`; handler catches and sends `{"error": "..."}` to the acting player only |
 | Not your turn | Handler checks active player before calling domain; returns `{"error": "not your turn"}` |
 | Stale / missing game state | Handler returns `{"error": "game not found"}` and logs a warning |
-| Unhandled exception | Lambda returns HTTP 500; API Gateway closes the frame; CloudWatch captures the traceback |
+| Unhandled exception | Handler logs the traceback to stderr; the WebSocket frame is closed; the process keeps running |
 
 Domain exceptions are **never** propagated as raw Python tracebacks to the client.
 
 ## 8.3 Logging & Observability
 
-- All Lambdas use **AWS Lambda Powertools** (`Logger`, `Tracer`).
+- The service writes structured JSON logs to stdout using the Python `logging` module.
 - Every log entry includes: `gameId`, `playerId`, `action`, `durationMs`.
-- Structured JSON logs flow to CloudWatch Logs; a log group per function.
-- X-Ray tracing enabled on all Lambdas and DynamoDB calls for latency analysis.
+- Logs are captured by the Docker daemon and viewable via `docker logs <container>`.
+- No external tracing or metrics service is used for the kata.
 
 ## 8.4 Game State Consistency
 
-- Each game action is a **single DynamoDB `PutItem`** (full state replacement).
-- DynamoDB conditional writes (`attribute_exists(PK)`) guard against writing to a non-existent game.
-- No distributed transactions needed — one game lives in one item; all mutations are atomic at the item level.
+- Each game action is a **single SQLite transaction** that reads the current state row, applies the domain function, and writes the new state.
+- A `version` column on `games` is checked with an `UPDATE ... WHERE version = :expected` to detect concurrent writes; the second writer gets zero rows affected and retries.
+- One game lives in one row; all mutations are atomic within the transaction.
 
 ## 8.5 WebSocket Connection Lifecycle
 
-- `connectionId` items in DynamoDB carry a **TTL of 24 hours** to auto-expire stale connections.
-- If `postToConnection` returns `GoneException` (client disconnected), the Lambda deletes the connection item and logs a warning — it does not fail the action.
+- Each `connections` row carries an `expires_at` column set to `now + 24 h`. Expired rows are pruned on the next connect.
+- If the server tries to send a frame on a closed connection, it deletes the stale `connections` row and logs a warning — the action itself is not failed.

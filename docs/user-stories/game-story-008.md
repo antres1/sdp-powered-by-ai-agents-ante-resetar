@@ -1,6 +1,6 @@
-# GAME-STORY-008: Shared Domain Code Packaged as Lambda Layer
+# GAME-STORY-008: Shared Domain Code Packaged as a Python Package
 
-**Architecture Reference**: Section 9 — ADR-005 (shared domain code as Lambda Layer); Section 4.2 — Hexagonal Architecture (domain layer has zero infrastructure imports); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 9 — ADR-005 (shared domain code as a Python package in the image); Section 4.2 — Hexagonal Architecture (domain layer has zero infrastructure imports); Section 7.2 — Infrastructure as Code
 **Priority**: SUPPORTING
 **Status**: TODO
 
@@ -9,24 +9,24 @@
 ## Original Story
 
 AS A developer
-I WANT the shared domain code (`GameState`, `Game Rules`, `RuleViolation`) packaged as a Lambda Layer
-SO THAT all Lambda functions share a single copy of the domain logic without duplication in each deployment package
+I WANT the shared domain code (`GameState`, `Game Rules`, `RuleViolation`) packaged as a plain Python package under `src/domain/`
+SO THAT every action handler in the service imports the same domain logic without duplication
 
-### SCENARIO 1: All game Lambdas import domain code from the shared layer
+### SCENARIO 1: All action handlers import domain code from the shared package
 
 **Scenario ID**: GAME-STORY-008-S1
 
 **GIVEN**
-* The Lambda Layer containing the domain package is deployed
-* PlayCardFunction, EndTurnFunction, MatchmakingFunction, and RejoinFunction reference the layer
+* The image contains the domain package at `src/domain/`
+* The `play_card`, `end_turn`, `join_queue`, and `rejoin` handlers all import from `domain.*`
 
 **WHEN**
-* Any of these Lambdas is invoked
+* The container starts and each handler is dispatched at least once
 
 **THEN**
 * The domain module is importable (`from domain.game import play_card, end_turn, is_game_over`)
 * No `ImportError` is raised
-* The Lambda executes successfully
+* Each handler executes successfully
 
 ### SCENARIO 2: Domain layer has zero infrastructure imports
 
@@ -36,11 +36,11 @@ SO THAT all Lambda functions share a single copy of the domain logic without dup
 * The domain package source files are inspected
 
 **WHEN**
-* A static analysis check runs (e.g. `grep -r "boto3\|aws_lambda_powertools" domain/`)
+* A static analysis check runs (e.g. `grep -rE "sqlite3|websockets|fastapi|flask" src/domain/`)
 
 **THEN**
-* No AWS SDK or infrastructure imports are found in any domain module
-* The domain package can be imported in a plain Python environment with no AWS dependencies
+* No infrastructure imports are found in any domain module
+* The domain package can be imported in a plain Python environment with no runtime dependencies
 
 ---
 
@@ -52,35 +52,35 @@ SO THAT all Lambda functions share a single copy of the domain logic without dup
 
 ## Backend Sub-Stories
 
-### GAME-BE-008.1: Domain package structured for Lambda Layer compatibility
+### GAME-BE-008.1: Domain package structured under src/domain/
 
 **Architecture Reference**: Section 4.2 — Hexagonal Architecture; Section 9 — ADR-004, ADR-005
 
 AS A developer
-I WANT the domain package laid out under `python/domain/` so it is importable from a Lambda Layer
-SO THAT the layer structure matches the Lambda runtime's `PYTHONPATH` convention
+I WANT the domain package laid out under `src/domain/` with `__init__.py`, `game.py`, and `models.py`
+SO THAT every handler in the service imports the domain via the same `domain.*` path
 
-#### SCENARIO 1: Domain modules importable after layer attachment
+#### SCENARIO 1: Domain modules importable from the service
 
 **Scenario ID**: GAME-BE-008.1-S1
 
 **GIVEN**
-* The layer zip contains `python/domain/__init__.py`, `python/domain/game.py`, and `python/domain/models.py`
-* A Lambda function has the layer attached
+* The image contains `src/domain/__init__.py`, `src/domain/game.py`, and `src/domain/models.py`
+* `pyproject.toml` adds `src/` to `pythonpath`
 
 **WHEN**
-* The Lambda runtime initialises
+* Any handler runs inside the container
 
 **THEN**
 * `import domain.game` succeeds
 * `from domain.models import GameState, RuleViolation` succeeds
 
-#### SCENARIO 2: Domain functions are pure — no side effects, no AWS imports
+#### SCENARIO 2: Domain functions are pure — no side effects, no infrastructure imports
 
 **Scenario ID**: GAME-BE-008.1-S2
 
 **GIVEN**
-* The domain package is installed in a plain Python 3.12 virtual environment (no boto3)
+* The domain package is installed in a plain Python 3.12 virtual environment (no third-party runtime deps)
 
 **WHEN**
 * `from domain.game import play_card, end_turn, is_game_over` is executed
@@ -126,12 +126,12 @@ AS A DevOps engineer
 I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
 SO THAT the domain package and its test suite can import every required package without errors
 
-#### SCENARIO 1: Domain package importable with no AWS dependencies
+#### SCENARIO 1: Domain package importable with no external infrastructure dependencies
 
 **Scenario ID**: GAME-INFRA-008.2-S1
 
 **GIVEN**
-* `requirements.txt` lists only pure-Python test and runtime dependencies (no boto3)
+* `requirements.txt` lists only pure-Python test and runtime dependencies
 * The Dockerfile runs `pip install -r requirements.txt`
 
 **WHEN**
@@ -139,7 +139,7 @@ SO THAT the domain package and its test suite can import every required package 
 
 **THEN**
 * The command exits with code 0
-* No `ModuleNotFoundError`, `ImportError`, or AWS-related import error is printed
+* No `ModuleNotFoundError` or `ImportError` is printed
 
 ---
 
@@ -175,7 +175,7 @@ SO THAT `pytest` can discover domain package tests without manual path configura
 
 AS A DevOps engineer
 I WANT the full pytest suite to run and pass inside the Docker container
-SO THAT the domain package is verified as correct and free of AWS imports before any deployment step
+SO THAT the domain package is verified as correct and free of infrastructure imports before any deployment step
 
 #### SCENARIO 1: pytest exits with code 0 inside the container
 
@@ -200,9 +200,9 @@ SO THAT the domain package is verified as correct and free of AWS imports before
 
 ```
 GAME-INFRA-008.1 (Dockerfile builds)
-  → GAME-INFRA-008.2 (dependencies installed, domain importable without AWS)
+  → GAME-INFRA-008.2 (dependencies installed, domain importable with no infra deps)
   → GAME-INFRA-008.3 (pytest discovery)
   → GAME-INFRA-008.4 (test suite passes in container)
-  → GAME-BE-008.1 (structure domain package under src/domain/ for layer compatibility)
-  → GAME-STORY-008 (E2E: deploy stack, invoke each Lambda, verify domain imports succeed)
+  → GAME-BE-008.1 (structure domain package under src/domain/)
+  → GAME-STORY-008 (E2E: build image, start container, verify every handler imports the domain successfully)
 ```

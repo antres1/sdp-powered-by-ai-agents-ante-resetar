@@ -1,6 +1,6 @@
 # MATCH-STORY-001: Player Joins Queue and Gets Matched
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (Player Connect & Matchmaking); Section 5.1 — Building Block View (MatchmakingFunction); Section 5.3 — DynamoDB Access Patterns (Queue entry)
+**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (Player Connect & Matchmaking); Section 5.2 — Components (join_queue handler); Section 5.3 — SQLite Schema (`queue` table)
 **Priority**: CORE
 **Status**: TODO
 
@@ -17,16 +17,16 @@ SO THAT I am paired with an opponent and a game session starts automatically
 **Scenario ID**: MATCH-STORY-001-S1
 
 **GIVEN**
-* Player A is connected (has a valid `CONN#<connA>` record in DynamoDB)
-* Player B is connected (has a valid `CONN#<connB>` record in DynamoDB)
+* Player A is connected (has a row in the `connections` table for `connA`)
+* Player B is connected (has a row in the `connections` table for `connB`)
 * Player A has already sent `joinQueue` and is waiting
 
 **WHEN**
 * Player B sends `{"action": "joinQueue"}`
 
 **THEN**
-* Both queue entries are deleted from DynamoDB
-* A new `GAME#<gameId> / STATE` item is written with the initial GameState (30 HP, 0 mana slots, shuffled decks)
+* Both rows in the `queue` table are deleted (one transaction)
+* A new row in the `games` table is written with the initial GameState (30 HP, 0 mana slots, shuffled decks)
 * Player A receives `{"status": "matched", "gameState": {...}}`
 * Player B receives `{"status": "matched", "gameState": {...}}`
 
@@ -41,7 +41,7 @@ SO THAT I am paired with an opponent and a game session starts automatically
 * A connected player sends `{"action": "joinQueue"}`
 
 **THEN**
-* A `QUEUE / PLAYER#<playerId>` item is written to DynamoDB
+* A row `(player_id, joined_at)` is written to the `queue` table in SQLite
 * The player receives `{"status": "waiting"}`
 * No game is created
 
@@ -87,12 +87,12 @@ SO THAT I know the system is working and can start playing immediately
 
 ## Backend Sub-Stories
 
-### MATCH-BE-001.1: MatchmakingFunction pairs players and creates initial GameState
+### MATCH-BE-001.1: join_queue handler pairs players and creates initial GameState
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 4.3 — Bounded Context: Matchmaking
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 4.3 — Bounded Context: Matchmaking
 
 AS A system
-I WANT the MatchmakingFunction to atomically claim a waiting player from the queue, create an initial GameState, and notify both players
+I WANT the `join_queue` handler to atomically claim a waiting player from the queue, create an initial GameState, and notify both players
 SO THAT exactly one game is created per pair with no duplicate matches
 
 #### SCENARIO 1: Match created when opponent is waiting
@@ -100,47 +100,47 @@ SO THAT exactly one game is created per pair with no duplicate matches
 **Scenario ID**: MATCH-BE-001.1-S1
 
 **GIVEN**
-* A `QUEUE / PLAYER#<opponentId>` item exists in DynamoDB
+* A row for `opponentId` exists in the `queue` table
 * A `joinQueue` event arrives for a second player
 
 **WHEN**
-* MatchmakingFunction executes
+* The `join_queue` handler executes
 
 **THEN**
-* Both queue items are deleted via conditional DynamoDB deletes (race-safe per R-4)
-* A `GAME#<gameId> / STATE` item is written with a valid initial GameState: each player has 30 HP, 0 mana slots, 0 mana, a 20-card deck, and an empty hand
-* `postToConnection` is called for both players with `{"status": "matched", "gameState": {...}}`
+* Both queue rows are deleted inside a single SQLite transaction (race-safe per R-4)
+* A row in the `games` table is written with a valid initial GameState: each player has 30 HP, 0 mana slots, 0 mana, a 20-card deck, and an empty hand
+* A `{"status": "matched", "gameState": {...}}` frame is pushed to both players' open sockets
 
 #### SCENARIO 2: No match when queue is empty
 
 **Scenario ID**: MATCH-BE-001.1-S2
 
 **GIVEN**
-* The queue is empty
+* The `queue` table is empty
 
 **WHEN**
-* MatchmakingFunction handles a `joinQueue` event
+* The `join_queue` handler processes a `joinQueue` event
 
 **THEN**
-* A `QUEUE / PLAYER#<playerId>` item is written
-* `postToConnection` is called for the joining player with `{"status": "waiting"}`
-* No game item is written
+* A row `(player_id, joined_at)` is written to the `queue` table
+* A `{"status": "waiting"}` frame is sent to the joining player's socket
+* No row is written to the `games` table
 
 #### SCENARIO 3: Concurrent join race — only one match created
 
 **Scenario ID**: MATCH-BE-001.1-S3
 
 **GIVEN**
-* Two `joinQueue` events for different players arrive simultaneously
-* Both invocations attempt to claim the same waiting queue entry
+* Two `joinQueue` events for different players arrive nearly simultaneously
+* Both handlers attempt to claim the same waiting queue row
 
 **WHEN**
-* Both MatchmakingFunction instances execute concurrently
+* Both handlers execute concurrently
 
 **THEN**
-* Exactly one invocation succeeds in deleting the queue entry (conditional delete)
+* Exactly one handler's `DELETE FROM queue WHERE player_id = ?` affects one row
 * Exactly one game is created
-* The losing invocation writes its own queue entry and returns `{"status": "waiting"}`
+* The losing handler writes its own queue row and returns `{"status": "waiting"}`
 
 ---
 
@@ -148,7 +148,7 @@ SO THAT exactly one game is created per pair with no duplicate matches
 
 ### MATCH-INFRA-001.1: Dockerfile builds successfully for the matchmaking service
 
-**Architecture Reference**: Section 5.1 — Building Block View (MatchmakingFunction); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
 I WANT the matchmaking service Dockerfile to build without errors
@@ -173,7 +173,7 @@ SO THAT the container image is available for local development and test executio
 
 ### MATCH-INFRA-001.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 4.3 — Bounded Context: Matchmaking; Section 5.1 — MatchmakingFunction
+**Architecture Reference**: Section 4.3 — Bounded Context: Matchmaking; Section 5.2 — Components (join_queue handler)
 
 AS A DevOps engineer
 I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
@@ -198,7 +198,7 @@ SO THAT the matchmaking service and its test suite can import every required pac
 
 ### MATCH-INFRA-001.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 4.2 — Hexagonal Architecture
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
 I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
@@ -223,7 +223,7 @@ SO THAT `pytest` can discover matchmaking test files without manual path configu
 
 ### MATCH-INFRA-001.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 7.3 — Deployment Pipeline
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
 I WANT the full pytest suite to run and pass inside the Docker container
@@ -255,7 +255,7 @@ MATCH-INFRA-001.1 (Dockerfile builds)
   → MATCH-INFRA-001.2 (dependencies installed)
   → MATCH-INFRA-001.3 (pytest discovery)
   → MATCH-INFRA-001.4 (test suite passes in container)
-  → MATCH-BE-001.1 (MatchmakingFunction logic)
+  → MATCH-BE-001.1 (join_queue handler logic)
   → MATCH-FE-001.1 (lobby UI + match transition)
-  → MATCH-STORY-001 (E2E: two clients connect, join queue, verify game created and both notified)
+  → MATCH-STORY-001 (E2E: two clients connect, join queue, verify `games` row created and both sockets notified)
 ```

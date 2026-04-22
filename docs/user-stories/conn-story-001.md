@@ -1,6 +1,6 @@
 # CONN-STORY-001: Player Connects via WebSocket with JWT Auth
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (Player Connect & Matchmaking); Section 5.1 — Building Block View (ConnectFunction); Section 8.1 — Authentication & Authorisation
+**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (Player Connect & Matchmaking); Section 5.2 — Components (connect handler); Section 8.1 — Authentication & Authorisation
 **Priority**: CORE
 **Status**: TODO
 
@@ -17,15 +17,16 @@ SO THAT I am authenticated and my session is tracked, enabling me to join a game
 **Scenario ID**: CONN-STORY-001-S1
 
 **GIVEN**
-* A registered Cognito user holds a valid JWT access token
-* The WebSocket API endpoint is deployed and reachable
+* The container is running with a valid `JWT_SECRET` set
+* The player holds a JWT signed with that secret
+* The WebSocket server is reachable on `ws://localhost:8000`
 
 **WHEN**
-* The player opens a WebSocket connection to `wss://<api-id>.execute-api.eu-central-1.amazonaws.com/prod?token=<JWT>`
+* The player opens a WebSocket connection to `ws://localhost:8000?token=<JWT>`
 
 **THEN**
 * The connection is accepted (HTTP 101 Switching Protocols)
-* A `CONN#<connectionId> → playerId` record is written to DynamoDB
+* A row mapping `connectionId → playerId` is written to the `connections` table in SQLite
 * The player can send and receive WebSocket frames
 
 ### SCENARIO 2: Connection rejected with invalid JWT
@@ -40,8 +41,8 @@ SO THAT I am authenticated and my session is tracked, enabling me to join a game
 
 **THEN**
 * The connection is rejected with HTTP 401
-* No DynamoDB record is written
-* The rejection is logged in CloudWatch with the reason
+* No row is written to the `connections` table
+* The rejection is logged to stdout (visible via `docker logs`) with the reason
 
 ---
 
@@ -87,44 +88,44 @@ SO THAT I stay connected to the game without manual intervention
 
 ## Backend Sub-Stories
 
-### CONN-BE-001.1: ConnectFunction validates JWT and stores connection mapping
+### CONN-BE-001.1: connect handler validates JWT and stores connection mapping
 
-**Architecture Reference**: Section 5.1 — ConnectFunction; Section 8.1 — Authentication & Authorisation
+**Architecture Reference**: Section 5.2 — Components (connect handler); Section 8.1 — Authentication & Authorisation
 
 AS A system
-I WANT the ConnectFunction Lambda to validate the JWT via Cognito and persist the `connectionId → playerId` mapping
-SO THAT subsequent Lambdas can identify which player owns a given connection
+I WANT the `connect` handler to validate the JWT with the pre-shared key and persist the `connectionId → playerId` mapping in SQLite
+SO THAT subsequent action handlers can identify which player owns a given connection
 
 #### SCENARIO 1: Valid JWT stores connection record
 
 **Scenario ID**: CONN-BE-001.1-S1
 
 **GIVEN**
-* A `$connect` event arrives with a valid JWT in `queryStringParameters.token`
-* Cognito returns valid claims including `sub` (playerId)
+* A WebSocket connect event arrives with a valid JWT in the `?token=` query parameter
+* PyJWT successfully decodes the token and returns claims including `sub` (playerId)
 
 **WHEN**
-* ConnectFunction is invoked
+* The `connect` handler runs
 
 **THEN**
-* A DynamoDB item `PK=CONN#<connectionId>, SK=PLAYER` with `playerId` and TTL (+24 h) is written
-* The function returns HTTP 200
+* A row `(connection_id, player_id, expires_at = now + 24 h)` is written to the `connections` table
+* The handler returns success and the WebSocket upgrade completes
 
-#### SCENARIO 2: Invalid JWT returns 401 without writing to DynamoDB
+#### SCENARIO 2: Invalid JWT rejects the connection without writing to SQLite
 
 **Scenario ID**: CONN-BE-001.1-S2
 
 **GIVEN**
-* A `$connect` event arrives with an expired JWT
+* A connect event arrives with an expired JWT
 
 **WHEN**
-* ConnectFunction calls Cognito to validate the token
+* The `connect` handler calls PyJWT to validate the token
 
 **THEN**
-* Cognito returns an error
-* The function returns HTTP 401
-* No DynamoDB write is performed
-* A structured warning log is emitted with `connectionId` and error reason
+* PyJWT raises `ExpiredSignatureError`
+* The handler closes the socket with HTTP 401
+* No row is written to the `connections` table
+* A structured warning log is emitted to stdout with `connectionId` and error reason
 
 ---
 
@@ -132,7 +133,7 @@ SO THAT subsequent Lambdas can identify which player owns a given connection
 
 ### CONN-INFRA-001.1: Dockerfile builds successfully for the connection service
 
-**Architecture Reference**: Section 5.1 — Building Block View (ConnectFunction); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Components (connect handler); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
 I WANT the connection service Dockerfile to build without errors
@@ -157,7 +158,7 @@ SO THAT the container image is available for local development and test executio
 
 ### CONN-INFRA-001.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 8.1 — Authentication & Authorisation; Section 5.1 — ConnectFunction
+**Architecture Reference**: Section 8.1 — Authentication & Authorisation; Section 5.2 — Components (connect handler)
 
 AS A DevOps engineer
 I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
@@ -182,7 +183,7 @@ SO THAT the connection service and its test suite can import every required pack
 
 ### CONN-INFRA-001.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — ConnectFunction; Section 4.2 — Hexagonal Architecture
+**Architecture Reference**: Section 5.2 — Components (connect handler); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
 I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
@@ -207,7 +208,7 @@ SO THAT `pytest` can discover connection service test files without manual path 
 
 ### CONN-INFRA-001.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 5.1 — ConnectFunction; Section 7.3 — Deployment Pipeline
+**Architecture Reference**: Section 5.2 — Components (connect handler); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
 I WANT the full pytest suite to run and pass inside the Docker container
@@ -239,7 +240,7 @@ CONN-INFRA-001.1 (Dockerfile builds)
   → CONN-INFRA-001.2 (dependencies installed)
   → CONN-INFRA-001.3 (pytest discovery)
   → CONN-INFRA-001.4 (test suite passes in container)
-  → CONN-BE-001.1 (ConnectFunction logic)
+  → CONN-BE-001.1 (connect handler logic)
   → CONN-FE-001.1 (client WebSocket lifecycle)
-  → CONN-STORY-001 (E2E: connect with JWT, verify DynamoDB record)
+  → CONN-STORY-001 (E2E: connect with JWT, verify `connections` row exists in SQLite)
 ```

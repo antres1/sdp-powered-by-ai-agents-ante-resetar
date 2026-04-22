@@ -1,6 +1,6 @@
 # MATCH-STORY-002: Player Waits in Queue with No Opponent
 
-**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (Player Connect & Matchmaking, waiting branch); Section 5.1 — Building Block View (MatchmakingFunction); Section 5.3 — DynamoDB Access Patterns (Queue entry)
+**Architecture Reference**: Section 6 — Runtime View, Scenario 1 (Player Connect & Matchmaking, waiting branch); Section 5.2 — Components (join_queue handler); Section 5.3 — SQLite Schema (`queue` table)
 **Priority**: SUPPORTING
 **Status**: TODO
 
@@ -21,10 +21,10 @@ SO THAT I know my request was received and the system is looking for a match
 * A connected player sends `{"action": "joinQueue"}`
 
 **WHEN**
-* MatchmakingFunction processes the request
+* The `join_queue` handler processes the request
 
 **THEN**
-* A `QUEUE / PLAYER#<playerId>` item is written to DynamoDB
+* A row `(player_id, joined_at)` is written to the `queue` table in SQLite
 * The player receives `{"status": "waiting"}`
 * No game is created
 
@@ -33,7 +33,7 @@ SO THAT I know my request was received and the system is looking for a match
 **Scenario ID**: MATCH-STORY-002-S2
 
 **GIVEN**
-* A `QUEUE / PLAYER#<playerId>` item already exists for this player
+* A row for this `player_id` already exists in the `queue` table
 
 **WHEN**
 * The same player sends `{"action": "joinQueue"}` again
@@ -83,42 +83,42 @@ SO THAT I know the system is still looking and I haven't been dropped from the q
 
 ## Backend Sub-Stories
 
-### MATCH-BE-002.1: MatchmakingFunction writes queue entry and responds with waiting status
+### MATCH-BE-002.1: join_queue handler writes queue row and responds with waiting status
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 5.3 — DynamoDB Access Patterns (Queue entry)
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 5.3 — SQLite Schema (`queue` table)
 
 AS A system
-I WANT MatchmakingFunction to write a queue entry and return `{"status": "waiting"}` when no opponent is available
+I WANT the `join_queue` handler to write a queue row and return `{"status": "waiting"}` when no opponent is available
 SO THAT the player is registered for matching and informed of their status
 
-#### SCENARIO 1: Queue entry written and waiting response sent
+#### SCENARIO 1: Queue row written and waiting response sent
 
 **Scenario ID**: MATCH-BE-002.1-S1
 
 **GIVEN**
-* No `QUEUE / PLAYER#*` items exist in DynamoDB
+* The `queue` table is empty
 * A `joinQueue` event arrives
 
 **WHEN**
-* MatchmakingFunction executes
+* The `join_queue` handler executes
 
 **THEN**
-* A `PutItem` with `PK=QUEUE, SK=PLAYER#<playerId>` and `connectionId` is written
-* `postToConnection` is called for the joining player with `{"status": "waiting"}`
-* No game item is written
+* `INSERT INTO queue (player_id, joined_at) VALUES (?, ?)` is executed
+* A `{"status": "waiting"}` frame is sent to the joining player's socket
+* No row is written to the `games` table
 
-#### SCENARIO 2: Idempotent re-join — no duplicate entry
+#### SCENARIO 2: Idempotent re-join — no duplicate row
 
 **Scenario ID**: MATCH-BE-002.1-S2
 
 **GIVEN**
-* A `QUEUE / PLAYER#<playerId>` item already exists
+* A row for this `player_id` already exists in the `queue` table
 
 **WHEN**
 * The same player sends `joinQueue` again
 
 **THEN**
-* A `PutItem` with `ConditionExpression: attribute_not_exists(PK)` either skips or overwrites idempotently
+* The handler uses `INSERT OR IGNORE` (or checks existence first); no duplicate row is written
 * The player receives `{"status": "waiting"}`
 * No game is created
 
@@ -128,7 +128,7 @@ SO THAT the player is registered for matching and informed of their status
 
 ### MATCH-INFRA-002.1: Dockerfile builds successfully for the matchmaking service
 
-**Architecture Reference**: Section 5.1 — Building Block View (MatchmakingFunction); Section 7.2 — Infrastructure as Code
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 7.2 — Infrastructure as Code
 
 AS A DevOps engineer
 I WANT the matchmaking service Dockerfile to build without errors
@@ -153,7 +153,7 @@ SO THAT the container image is available for local development and test executio
 
 ### MATCH-INFRA-002.2: Dependencies are installed correctly inside the container
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 5.3 — DynamoDB Access Patterns (Queue entry)
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 5.3 — SQLite Schema (`queue` table)
 
 AS A DevOps engineer
 I WANT all Python dependencies declared in `requirements.txt` to be installed inside the Docker image
@@ -178,7 +178,7 @@ SO THAT the waiting-queue logic and its test suite can import every required pac
 
 ### MATCH-INFRA-002.3: Project structure supports pytest discovery inside the container
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 4.2 — Hexagonal Architecture
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 4.2 — Hexagonal Architecture
 
 AS A DevOps engineer
 I WANT the project layout to follow pytest conventions so that test collection succeeds inside the container
@@ -203,7 +203,7 @@ SO THAT `pytest` can discover waiting-queue test files without manual path confi
 
 ### MATCH-INFRA-002.4: Test suite passes inside the Docker container
 
-**Architecture Reference**: Section 5.1 — MatchmakingFunction; Section 7.3 — Deployment Pipeline
+**Architecture Reference**: Section 5.2 — Components (join_queue handler); Section 7.3 — Deployment Pipeline
 
 AS A DevOps engineer
 I WANT the full pytest suite to run and pass inside the Docker container
@@ -235,7 +235,7 @@ MATCH-INFRA-002.1 (Dockerfile builds)
   → MATCH-INFRA-002.2 (dependencies installed)
   → MATCH-INFRA-002.3 (pytest discovery)
   → MATCH-INFRA-002.4 (test suite passes in container)
-  → MATCH-BE-002.1 (waiting path in MatchmakingFunction)
+  → MATCH-BE-002.1 (waiting path in join_queue handler)
   → MATCH-FE-002.1 (persistent waiting indicator)
-  → MATCH-STORY-002 (E2E: join queue alone → receive waiting status, DynamoDB entry exists)
+  → MATCH-STORY-002 (E2E: join queue alone → receive waiting status, `queue` row exists in SQLite)
 ```

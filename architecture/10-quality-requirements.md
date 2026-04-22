@@ -9,10 +9,9 @@
 | **Correctness** | A player draws when hand is full | Card is discarded (Overload); hand size stays at 5 |
 | **Responsiveness** | Player plays a card | Opponent sees updated state within 500 ms (p95) |
 | **Responsiveness** | Player connects and joins queue | Match found and both players notified within 1 s |
-| **Testability** | Developer runs the test suite locally | All domain rule tests pass without AWS credentials |
-| **Scalability** | 100 concurrent games in progress | No provisioned capacity required; DynamoDB and Lambda scale automatically |
-| **Operability** | A Lambda throws an unhandled exception | Error appears in CloudWatch with `gameId` and stack trace within 30 s |
-| **Operability** | A new developer deploys the stack | `sam deploy` completes successfully from a clean AWS account |
+| **Testability** | Developer runs the test suite | `docker run --rm tcg-tests` passes all domain rule tests with no external dependencies |
+| **Reproducibility** | Developer checks out the repo on a clean machine | `docker build . && docker run` produces a working service |
+| **Operability** | An action handler throws an unhandled exception | Error appears in `docker logs` with `gameId` and stack trace within 1 s |
 
 ## 10.2 Quality Scenarios (detail)
 
@@ -22,13 +21,13 @@
 - A rule violation must never mutate persisted state.
 
 ### Responsiveness — Real-time Push
-- After any game action Lambda completes, `postToConnection` is called for both players before the Lambda returns.
-- Target: action Lambda total duration ≤ 300 ms (p95) excluding cold start.
+- After any action handler completes, the server pushes the updated frame to both players' open sockets before the handler returns.
+- Target: handler total duration ≤ 50 ms (p95) on a developer machine.
 
 ### Testability — No-infra Domain Tests
 - `pytest` runs the full domain test suite in < 5 s with no network calls.
-- Lambda handlers are tested with injected in-memory fakes for `GameRepository` and `PlayerNotifier`.
+- Action handlers are tested with injected in-memory fakes for `GameRepository` and `PlayerNotifier`.
 
 ### Operability — Observability
-- Every Lambda emits structured JSON logs (Lambda Powertools) including `gameId`, `playerId`, `action`, `durationMs`.
-- X-Ray traces link API Gateway → Lambda → DynamoDB for every request.
+- The service emits structured JSON logs to stdout including `gameId`, `playerId`, `action`, `durationMs`.
+- Logs are captured by Docker and viewable via `docker logs <container>`.
