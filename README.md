@@ -99,17 +99,20 @@ tcg play --game $GAME --player B --card 0
 
 ### 3. Rule enforcement (manually observable)
 
+Using the game from step 2 (A has played, then ended the turn, so B is now
+active with mana 1 and hand `[0, 1, 1, 2]`):
+
 ```bash
-# Rejecting insufficient mana: A has 1 mana but tries to play a card of cost > 1
-tcg play --game $GAME --player A --card 2
+# Insufficient mana: B has 1 mana and tries to play the cost-2 card (index 3)
+tcg play --game $GAME --player B --card 3
 # => {"error": "not enough mana", "game": null, "winner": null}
 
-# Rejecting out-of-turn play: B tries to play while it's A's turn
-tcg play --game $GAME --player B --card 0
+# Out-of-turn play: A tries to play while it's B's turn
+tcg play --game $GAME --player A --card 0
 # => {"error": "not your turn", ...}
 
 # Invalid card index
-tcg play --game $GAME --player A --card 99
+tcg play --game $GAME --player B --card 99
 # => {"error": "invalid card index", ...}
 ```
 
