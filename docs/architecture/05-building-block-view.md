@@ -2,7 +2,7 @@
 
 ## 5.1 Level 1 — Containers
 
-See [`diagrams/c4-container.svg`](diagrams/c4-container.svg).
+![C4 Container Diagram](diagrams/c4-container.svg)
 
 | Container | Technology | Responsibility |
 |-----------|-----------|---------------|
@@ -15,7 +15,7 @@ and all action handlers in one process.
 
 ## 5.2 Level 2 — Components (inside the Game Service)
 
-See [`diagrams/c4-component.svg`](diagrams/c4-component.svg).
+![C4 Component Diagram](diagrams/c4-component.svg)
 
 Every action (`connect`, `disconnect`, `join_queue`, `play_card`, `end_turn`)
 is dispatched to its own handler function that follows the same shape:

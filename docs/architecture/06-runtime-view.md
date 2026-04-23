@@ -2,7 +2,7 @@
 
 ## Scenario 1: Player Connect & Matchmaking
 
-See [`diagrams/seq-matchmaking.svg`](diagrams/seq-matchmaking.svg).
+![Matchmaking Sequence Diagram](diagrams/seq-matchmaking.svg)
 
 1. Player opens a WebSocket connection to `ws://localhost:8000` with a JWT in the query string.
 2. The `connect` handler validates the token locally (PyJWT with the pre-shared key) and stores `connectionId → playerId` in SQLite.
@@ -11,7 +11,7 @@ See [`diagrams/seq-matchmaking.svg`](diagrams/seq-matchmaking.svg).
 
 ## Scenario 2: Play Card
 
-See [`diagrams/seq-play-card.svg`](diagrams/seq-play-card.svg).
+![Play Card Sequence Diagram](diagrams/seq-play-card.svg)
 
 1. Active player sends `playCard` with a card index.
 2. The `play_card` handler loads `GameState` from SQLite and delegates to `Game Rules`.
@@ -21,7 +21,7 @@ See [`diagrams/seq-play-card.svg`](diagrams/seq-play-card.svg).
 
 ## Scenario 3: End Turn
 
-See [`diagrams/seq-end-turn.svg`](diagrams/seq-end-turn.svg).
+![End Turn Sequence Diagram](diagrams/seq-end-turn.svg)
 
 1. Active player sends `endTurn`.
 2. The `end_turn` handler loads state and calls `end_turn()` in the domain layer.
