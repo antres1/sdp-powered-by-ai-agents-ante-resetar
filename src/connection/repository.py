@@ -41,3 +41,10 @@ class ConnectionRepository:
         if row is None:
             return None
         return Connection(*row)
+
+    def delete(self, connection_id: str) -> None:
+        self._conn.execute(
+            "DELETE FROM connections WHERE connection_id = ?",
+            (connection_id,),
+        )
+        self._conn.commit()
