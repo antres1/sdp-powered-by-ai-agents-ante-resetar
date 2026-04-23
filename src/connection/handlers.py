@@ -39,3 +39,7 @@ def connect(
         )
     )
     return ConnectResult(accepted=True, player_id=player_id)
+
+
+def disconnect(*, connection_id: str, repo: ConnectionRepository) -> None:
+    repo.delete(connection_id)
