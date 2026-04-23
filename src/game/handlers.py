@@ -82,6 +82,13 @@ def play_card_handler(
     return PlayCardResult(game=new_dict, winner=winner)
 
 
+def rejoin(*, player_id: str, game_repo: MatchmakingRepository) -> dict:
+    game = game_repo.find_game_by_player(player_id)
+    if game is None:
+        return {"status": "no_active_game"}
+    return {"status": "rejoined", "game": game}
+
+
 def end_turn_handler(
     *,
     game_id: str,
