@@ -26,6 +26,19 @@ the pytest suite.
 
 Story status is tracked in [`docs/user-stories/README.md`](docs/user-stories/README.md).
 
+## Documentation
+
+📚 **[Full Documentation](https://antres1.github.io/sdp-powered-by-ai-agents-ante-resetar/)** — Architecture, user stories, and implementation details.
+
+## Tech Stack
+
+- **Language**: Python 3.12
+- **Testing**: pytest
+- **Storage**: SQLite
+- **Deployment**: Docker
+- **Architecture**: Hexagonal (ports & adapters)
+- **Domain**: Pure functions, zero infrastructure imports
+
 ## Build and run
 
 ```bash
