@@ -64,3 +64,11 @@ class MatchmakingRepository:
             "SELECT state_json FROM games WHERE game_id = ?", (game_id,)
         ).fetchone()
         return json.loads(row[0]) if row else None
+
+    def find_game_by_player(self, player_id: str) -> dict | None:
+        rows = self._conn.execute("SELECT state_json FROM games").fetchall()
+        for (state_json,) in rows:
+            state = json.loads(state_json)
+            if player_id in state.get("player_ids", []):
+                return state
+        return None
