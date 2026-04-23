@@ -3,11 +3,11 @@ Trading Card Game Kata Documentation
 
 A minimal implementation of the Trading Card Game Kata, built end-to-end with AI agents.
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Overview:
+Overview
+--------
 
-   ../README
+See the `project README on GitHub <https://github.com/antres1/sdp-powered-by-ai-agents-ante-resetar#readme>`_
+for build, run, and verification instructions.
 
 .. toctree::
    :maxdepth: 2

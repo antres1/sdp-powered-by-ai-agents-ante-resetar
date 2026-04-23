@@ -1,6 +1,6 @@
 # 7. Deployment View
 
-See [`diagrams/deployment.svg`](diagrams/deployment.svg).
+![Deployment Diagram](diagrams/deployment.svg)
 
 ## 7.1 Infrastructure Overview
 
